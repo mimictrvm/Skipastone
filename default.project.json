@@ -1,0 +1,26 @@
+{
+  "name": "Skipastone",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Cutscenes": {
+        "$path": "src/shared/Cutscenes"
+      }
+    },
+    "ServerScriptService": {
+      "CutsceneService": {
+        "$path": "src/server/CutsceneService.luau"
+      },
+      "CutsceneBoot": {
+        "$path": "src/server/CutsceneBoot.server.luau"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "CutsceneClient": {
+          "$path": "src/client/CutsceneClient.client.luau"
+        }
+      }
+    }
+  }
+}
