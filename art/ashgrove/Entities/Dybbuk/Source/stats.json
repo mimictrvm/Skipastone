@@ -1,0 +1,72 @@
+{
+ "asset": "AH_Ent_Dybbuk",
+ "meshes": {
+  "AH_Ent_Dybbuk": {
+   "tris": 11500,
+   "verts": 5718,
+   "max_influences": 4,
+   "unweighted_verts": 0
+  },
+  "AH_Ent_Dybbuk_Glow": {
+   "tris": 80,
+   "verts": 44,
+   "max_influences": 1,
+   "unweighted_verts": 0
+  }
+ },
+ "bones": 36,
+ "deform_bones": 34,
+ "size_studs": {
+  "width_x": 8.86,
+  "height_z": 9.15,
+  "depth_y": 1.09,
+  "min_z": 0.005
+ },
+ "clips": {
+  "Idle": {
+   "frames": 120,
+   "seconds": 4.0,
+   "loop": true
+  },
+  "Walk": {
+   "frames": 48,
+   "seconds": 1.6,
+   "loop": true
+  },
+  "Run": {
+   "frames": 24,
+   "seconds": 0.8,
+   "loop": true
+  },
+  "Attack": {
+   "frames": 45,
+   "seconds": 1.5,
+   "loop": false
+  },
+  "ThrowCorpse": {
+   "frames": 75,
+   "seconds": 2.5,
+   "loop": false
+  },
+  "Stunned": {
+   "frames": 75,
+   "seconds": 2.5,
+   "loop": false
+  },
+  "StunnedLoop": {
+   "frames": 30,
+   "seconds": 1.0,
+   "loop": true
+  },
+  "Manifest": {
+   "frames": 60,
+   "seconds": 2.0,
+   "loop": false
+  },
+  "Vanish": {
+   "frames": 36,
+   "seconds": 1.2,
+   "loop": false
+  }
+ }
+}

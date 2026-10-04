@@ -1,0 +1,73 @@
+{
+ "asset": "AH_Ent_Dullahan",
+ "meshes": {
+  "AH_Ent_Dullahan": {
+   "tris": 9700,
+   "verts": 4780,
+   "max_influences": 4,
+   "unweighted_verts": 0
+  },
+  "AH_Ent_Dullahan_Head": {
+   "tris": 2100,
+   "verts": 994,
+   "max_influences": 2,
+   "unweighted_verts": 0
+  },
+  "AH_Ent_Dullahan_HeadGlow": {
+   "tris": 80,
+   "verts": 44,
+   "max_influences": 1,
+   "unweighted_verts": 0
+  }
+ },
+ "bones": 46,
+ "deform_bones": 44,
+ "size_studs": {
+  "width_x": 6.2,
+  "height_z": 7.71,
+  "depth_y": 2.28,
+  "min_z": -0.025
+ },
+ "clips": {
+  "Idle": {
+   "frames": 120,
+   "seconds": 4.0,
+   "loop": true
+  },
+  "Walk": {
+   "frames": 42,
+   "seconds": 1.4,
+   "loop": true
+  },
+  "Stride": {
+   "frames": 30,
+   "seconds": 1.0,
+   "loop": true
+  },
+  "Run": {
+   "frames": 22,
+   "seconds": 0.73,
+   "loop": true
+  },
+  "AttackWhip": {
+   "frames": 48,
+   "seconds": 1.6,
+   "loop": false
+  },
+  "Reveal": {
+   "frames": 60,
+   "seconds": 2.0,
+   "loop": false
+  },
+  "Manifest": {
+   "frames": 60,
+   "seconds": 2.0,
+   "loop": false
+  },
+  "Vanish": {
+   "frames": 36,
+   "seconds": 1.2,
+   "loop": false
+  }
+ }
+}
