@@ -24,7 +24,7 @@ Also included:
 
 | Entity | Size W×H×D (studs) | Triangles (≤ 12,000) | Bones (≤ ~50) | Max influences | Clips |
 |---|---|---|---|---|---|
-| Dybbuk | 8.9 × 9.2 × 1.1 (A-pose) | 11,580 | 36 | 4 | 9 |
+| Dybbuk | 8.9 × 9.2 × 1.1 (A-pose) | 11,580 | 36 | 4 | 16 |
 | Dullahan | 6.2 × 7.7 × 2.3 | 11,880 (body 9,700 + head 2,100 + eyes 80) | 46 | 4 | 8 |
 | Demon | 8.0 × 10.1 × 1.8 (to horn tips) | 11,354 | 38 | 4 | 8 |
 | Siren | 5.6 × 7.1 × 6.2 (long tail; floats 0.5 up) | 11,060 | 38 | 4 | 8 |
@@ -96,6 +96,26 @@ The meshes, UVs, textures and animation are unchanged. `tools/reexport.py` re-ex
 | StunnedLoop | 30 loop | …for as long as the stun lasts |
 | Manifest | 60 | Unfolds from a heap on the floor |
 | Vanish | 36 | Arches, collapses down through the floor line |
+
+**Added clips (Pack 1.1).** Seven more clips on the same rig. The model and the nine clips above are unchanged.
+
+![Dybbuk new clips](Entities/Dybbuk/Review/AH_Ent_Dybbuk_AnimSheet_NewClips.png)
+![Dybbuk station clips](Entities/Dybbuk/Review/AH_Ent_Dybbuk_AnimSheet_Station.png)
+
+| Clip | Frames | Notes |
+|---|---|---|
+| Roar | 33 | Crouches in, then throws its head back, arms flung out, jaw wide. Peak on frame 13; plays after the head turn |
+| Grab | 90 | Lunges low and **clamps a player on frame 19**, hoists them to its face (frame 39), holds them up shaking, then **flings them down on frame 79**. Weld the player to the midpoint of `Hand_L` and `Hand_R` between those frames |
+| StoopWalk | 54 loop | Low passages: torso level, spike legs splayed, knuckles to the floor, head held upright. Top of head about 4.6 rig studs (6.4 at ×1.4) |
+| EdgeLean | 60 loop | Crouched at the platform edge, folded over the drop, raking both hands down at the track bed and screaming |
+| Fall | 48 | When stunned at the edge: jolts, sways and topples forward. It lands **face down on the track bed on frame 37**, its spike legs still hooked over the platform edge |
+| FallenLoop | 60 loop | Lies twitching on the rails. Play after Fall for as long as the stun lasts |
+| PanicClimb | 66 | Jerks awake, shoves itself up, scrambles back over the edge and snaps upright. It ends in the normal stand pose, so Idle, Walk or Run can follow |
+
+**Station clips.** EdgeLean, Fall, FallenLoop and PanicClimb carry their own root motion (on `HumanoidRootNode`). Keep the model's pivot where the Dybbuk stands on the platform, with its feet 0.8 rig studs behind the edge, for the whole sequence: Fall → FallenLoop → PanicClimb. The body drops onto the track bed and climbs back by itself. Two things to handle in code:
+
+- Collision and hit boxes don't follow the root motion. While it's down, move or extend them toward the track bed in code.
+- They assume a platform 3.0 rig studs high (4.2 studs at ×1.4) and an edge 0.8 rig studs (1.1 at ×1.4) in front of the feet. These are `PLATFORM_H` and `EDGE` at the top of the animation section in `tools/build_dybbuk.py`. To match a different platform, set them and run `python3 add_clips.py Dybbuk EdgeLean Fall FallenLoop PanicClimb` (about a minute).
 
 **Changes from the brief.** Bipeds were modelled in A-pose for clean skinning (the reference sheet shows that pose). The spike legs make footsteps a "tap"; the brief had no foot spec, so I chose the scarier option.
 
@@ -225,6 +245,7 @@ python3 build_dybbuk.py --preview              # ~1 min: sculpt check → Entiti
 python3 build_dybbuk.py                        # ~3-4 min: full build (mesh, bake, rig, clips, renders)
 python3 build_dybbuk.py --skip-bake --anim-sheet-only   # iterate on animation only
 python3 reexport.py Dybbuk                     # re-export FBX from Source/*.blend only (seconds)
+python3 add_clips.py Dybbuk Roar Grab          # (re)bake named clips onto the finished rig + review sheet
 python3 inspect_fbx.py ../Entities/Dybbuk/AH_Ent_Dybbuk.fbx   # check nodes, scale, Root keys
 python3 verify_anim.py Dybbuk                  # round-trip every clip against the source
 ```

@@ -67,6 +67,41 @@
    "frames": 36,
    "seconds": 1.2,
    "loop": false
+  },
+  "Roar": {
+   "frames": 33,
+   "seconds": 1.1,
+   "loop": false
+  },
+  "Grab": {
+   "frames": 90,
+   "seconds": 3.0,
+   "loop": false
+  },
+  "StoopWalk": {
+   "frames": 54,
+   "seconds": 1.8,
+   "loop": true
+  },
+  "EdgeLean": {
+   "frames": 60,
+   "seconds": 2.0,
+   "loop": true
+  },
+  "Fall": {
+   "frames": 48,
+   "seconds": 1.6,
+   "loop": false
+  },
+  "FallenLoop": {
+   "frames": 60,
+   "seconds": 2.0,
+   "loop": true
+  },
+  "PanicClimb": {
+   "frames": 66,
+   "seconds": 2.2,
+   "loop": false
   }
  }
 }

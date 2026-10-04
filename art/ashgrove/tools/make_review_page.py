@@ -23,7 +23,11 @@ E = [
                 'Stunned': 'Music box: recoil, clutch head, freeze', 'StunnedLoop': 'Hold for the stun duration',
                 'Idle': 'Breathing, two sharp head twitches', 'Walk': 'Stiff stilt gait',
                 'Run': 'Bent double, arms reaching', 'Manifest': 'Unfolds from a heap on the floor',
-                'Vanish': 'Arches, collapses through the floor line'},
+                'Vanish': 'Arches, collapses through the floor line',
+                'Roar': 'Head thrown back, arms out; peak frame 13', 'Grab': 'Clamps f19, hoists f39, flings f79',
+                'StoopWalk': 'Low passages, knuckle-walk', 'EdgeLean': 'Rakes down at the tracks from the edge',
+                'Fall': 'Topples onto the track bed, lands f37', 'FallenLoop': 'Twitching on the rails',
+                'PanicClimb': 'Scrambles back up, ends standing'},
          change='Spike legs instead of feet: the brief had no foot spec, so the scarier option won. Footsteps become a tap.'),
     dict(name='Dullahan', origin='Irish folklore', where='The portrait gallery', glow=('#FF5220', 'eyes of the carried head'),
          concept='The headless rider, on foot. A soaked, caped coachman\'s greatcoat with tarnished brass buttons and '
@@ -84,6 +88,12 @@ def main():
         for kind, fn, w in (('ref', f'AH_Ent_{n}_RefSheet.png', 2000), ('light', f'AH_Ent_{n}_InGameLight.png', 1470),
                             ('anim', f'AH_Ent_{n}_AnimSheet.png', 1400)):
             jpeg(os.path.join(rv, fn), os.path.join(OUT, 'img', f'{key}_{kind}.jpg'), w)
+        extra = []
+        for kind, fn, label in (('new', f'AH_Ent_{n}_AnimSheet_NewClips.png', 'New clips'),
+                                ('station', f'AH_Ent_{n}_AnimSheet_Station.png', 'Station clips')):
+            if os.path.exists(os.path.join(rv, fn)):
+                jpeg(os.path.join(rv, fn), os.path.join(OUT, 'img', f'{key}_{kind}.jpg'), 1600)
+                extra.append(f'<button role="tab" aria-selected="false" data-v="{kind}" id="{key}-t-{kind}">{label}</button>')
         tris = sum(v['tris'] for v in s['meshes'].values())
         sz = s['size_studs']
         top = sz['height_z'] + max(sz['min_z'], 0)
@@ -127,6 +137,7 @@ def main():
     <button role="tab" aria-selected="true" data-v="ref" id="{key}-t-ref">Reference sheet</button>
     <button role="tab" aria-selected="false" data-v="light" id="{key}-t-light">In-game light</button>
     <button role="tab" aria-selected="false" data-v="anim" id="{key}-t-anim">Animation frames</button>
+    {''.join(extra)}
   </div>
   <figure class="plate" data-k="{key}">
     <a href="img/{key}_ref.jpg" target="_blank" rel="noopener"><img src="img/{key}_ref.jpg" alt="{n} reference sheet: front, side and back views beside a 5.5-stud player for scale" loading="lazy"></a>
@@ -269,7 +280,9 @@ document.querySelectorAll('.entry').forEach(function (art) {
   var key = art.id, img = art.querySelector('.plate img'), link = art.querySelector('.plate a');
   var alts = { ref: ' reference sheet: front, side and back views beside a 5.5-stud player for scale',
                light: ' lit only by a flashlight, and silhouetted by a lightning flash',
-               anim: ' animation clips, six frames each' };
+               anim: ' animation clips, six frames each',
+               'new': ' added clips: Roar, Grab and StoopWalk, six frames each',
+               station: ' station clips on a platform and track set, six frames each' };
   var name = art.querySelector('h2').textContent;
   art.querySelectorAll('.views button').forEach(function (b) {
     b.addEventListener('click', function () {

@@ -420,15 +420,24 @@ MATERIALS = {'skin': mat_skin, 'teeth': mat_teeth, 'cloth': mat_cloth}
 # ----------------------------------------------------------------- animation
 SIDES = (('L', 1), ('R', -1))
 
+# Station platform used by EdgeLean / Fall / FallenLoop / PanicClimb, in rig studs
+# (multiply by the in-game scale, e.g. x1.4).  The model's pivot stays where the
+# Dybbuk stands, feet EDGE behind the platform edge; the clips move the body
+# (HumanoidRootNode root motion) down onto the track bed and back up.
+PLATFORM_H = 3.0     # platform top above the track bed
+EDGE = 0.8           # platform edge, in front of the feet (-Y)
+
 
 def mx(p, sgn):
     return (p[0] * sgn, p[1], p[2])
 
 
-def legs(an, pose, feet):
-    """feet: {'L': (x, y, z) tip target, 'R': ...} -> two-bone IK, knees forward."""
+def legs(an, pose, feet, poles=None):
+    """feet: {'L': (x, y, z) tip target, 'R': ...} -> two-bone IK, knees forward
+    unless poles gives a knee direction per side."""
     for t, sgn in SIDES:
-        mo.ik2(an, pose, f'UpperLeg_{t}', f'LowerLeg_{t}', feet[t], (0.15 * sgn, -1, 0.1), end=f'Spike_{t}')
+        pl = poles[t] if poles else (0.15 * sgn, -1, 0.1)
+        mo.ik2(an, pose, f'UpperLeg_{t}', f'LowerLeg_{t}', feet[t], pl, end=f'Spike_{t}')
     return pose
 
 
@@ -693,6 +702,225 @@ def clips(an):
         return p
     out.append(('Vanish', 36, bk.track([(0, st), (0.3, k_arch(), 'snap'), (0.45, k_arch()), (1.0, k_drop(), 'in')]),
                 False))
+    out += station_clips(an, st, k_recoil)
+    return out
+
+
+def station_clips(an, st, k_recoil):
+    """Pack 1.1: Roar, Grab, StoopWalk, EdgeLean, Fall, FallenLoop, PanicClimb."""
+    out = []
+    H, E = PLATFORM_H, EDGE
+    mirror = lambda r: bk.mirror_q(bk.Q(r))  # noqa: E731
+
+    # ---- Roar (~1.1 s): crouch in, then head thrown back, arms flung out, jaw wide
+    def k_gather():
+        p = {'@root': (0, 0.15, -0.55), 'Hips': (8, 0, 0), 'Spine': (16, 0, 0), 'Chest': (18, 0, 0),
+             'Neck': (18, 0, 0), 'Head': (6, 0, 0), 'Jaw': (4, 0, 0)}
+        p.update(bk.sym(fingers(46, 0, 30)))
+        arms(an, p, {'L': (0.75, -1.2, 4.4), 'R': (-0.75, -1.2, 4.4)}, hand_dir=(0.1, -0.4, -1))
+        legs(an, p, {'L': (0.62, 0.1, 0), 'R': (-0.62, 0.1, 0)})
+        return p
+
+    def k_roar(sh=0.0):
+        p = {'@root': (0, 0.35, -0.1), 'Hips': (-4, 0, 0), 'Spine': (-10, 0, 0), 'Chest': (-18, 0, 0),
+             'Neck': (-16, 0, 4 * sh), 'Head': (-46, 6 * sh, 8 * sh), 'Jaw': (58, 0, 0),
+             'Clavicle_L': (0, -14, 0), 'Clavicle_R': mirror((0, -14, 0))}
+        p.update(bk.sym(fingers(-16 + 6 * sh, 20, -12)))
+        arms(an, p, {'L': (3.2, 0.9, 6.9 + 0.1 * sh), 'R': (-3.2, 0.9, 6.9 - 0.1 * sh)}, hand_dir=(1, 0.3, 0.4))
+        legs(an, p, {'L': (0.66, 0.2, 0), 'R': (-0.66, 0.2, 0)})
+        return p
+    seq = [(0, st), (0.17, k_gather()), (0.36, k_roar(), 'snap')]
+    for i, sh in enumerate((0.9, -0.8, 0.7, -0.6, 0.4)):
+        seq.append((0.44 + i * 0.07, k_roar(sh)))
+    seq += [(0.8, k_roar()), (1.0, st)]
+    out.append(('Roar', 33, bk.track(seq), False))
+
+    # ---- Grab: lunges, clamps a player in both hands (f19), hoists them to its face (f39),
+    #      holds them up shaking, then flings them down (release f79)
+    def k_reach(close=False):
+        p = {'@root': (0, -0.7, -1.3), 'Hips': (18, 0, 0), 'Spine': (22, 0, 0), 'Chest': (24, 0, 0),
+             'Neck': (6, 0, 0), 'Head': (-30, 0, 0), 'Jaw': (30, 0, 0)}
+        p.update(bk.sym(fingers(64, 0, 45) if close else fingers(-12, 14, -8)))
+        w = 0.48 if close else 0.75
+        arms(an, p, {'L': (w, -2.35, 2.55), 'R': (-w, -2.35, 2.55)}, hand_dir=(-0.4, -0.6, -0.3),
+             pole={'L': (1, 0.3, -0.2), 'R': (-1, 0.3, -0.2)})
+        legs(an, p, {'L': (0.6, -0.7, 0), 'R': (-0.6, 0.6, 0)})
+        return p
+
+    def k_hoist(dx=0.0, dz=0.0):
+        p = {'@root': (0, 0.15, -0.05), 'Hips': (-4, 0, 0), 'Spine': (-6, 0, 0), 'Chest': (-8, 0, 0),
+             'Neck': (2, 0, 6 * dx), 'Head': (-24, 10 * dx, 0), 'Jaw': (26 + 20 * abs(dz), 0, 0)}
+        p.update(bk.sym(fingers(64, 0, 45)))
+        arms(an, p, {'L': (0.48 + dx, -1.55, 7.6 + dz), 'R': (-0.48 + dx, -1.55, 7.6 - dz)},
+             hand_dir=(-0.4, -0.6, 0.5), pole={'L': (1, 0.2, -0.6), 'R': (-1, 0.2, -0.6)})
+        legs(an, p, {'L': (0.6, 0.15, 0), 'R': (-0.6, 0.15, 0)})
+        return p
+
+    def k_fling():
+        p = {'@root': (0, 0.1, -0.4), 'Hips': (6, 0, 0), 'Spine': (8, 0, 0), 'Chest': (10, 0, 0),
+             'Neck': (8, 0, 0), 'Head': (-10, 0, 0), 'Jaw': (40, 0, 0)}
+        p.update(bk.sym(fingers(-14, 18, -10)))
+        arms(an, p, {'L': (1.6, -1.6, 5.2), 'R': (-1.6, -1.6, 5.2)}, hand_dir=(0.5, -0.5, -0.6))
+        legs(an, p, {'L': (0.6, 0.1, 0), 'R': (-0.6, 0.1, 0)})
+        return p
+    seq = [(0, st), (0.12, k_reach()), (0.2, k_reach(True), 'snap'), (0.42, k_hoist())]
+    for i, (dx, dz) in enumerate(((0.12, 0.1), (-0.1, -0.08), (0.08, 0.12), (-0.12, -0.06))):
+        seq.append((0.5 + i * 0.08, k_hoist(dx, dz)))
+    seq += [(0.82, k_hoist()), (0.87, k_fling(), 'snap'), (1.0, st)]
+    out.append(('Grab', 90, bk.track(seq), False))
+
+    # ---- StoopWalk (loop): torso level, spike legs splayed like a spider's, knuckles to the floor,
+    #      head held upright on the horizontal body. Top of head ~4.6 rig studs.
+    def stoop(t):
+        yL, zL, _ = mo.foot_cycle(t, 1.6, 0.42, 0.6)
+        yR, zR, _ = mo.foot_cycle(t + 0.5, 1.6, 0.42, 0.6)
+        hL = mo.foot_cycle(t + 0.55, 1.5, 0.35, 0.55)
+        hR = mo.foot_cycle(t + 0.05, 1.5, 0.35, 0.55)
+        p = {'@root': (0.08 * mo.s(t), 0.4, -2.55 + 0.1 * mo.c(2 * t))}
+        p['Hips'] = (42, 0, -8 * mo.c(t))
+        p['Spine'] = (24, 0, 5 * mo.c(t))
+        p['Chest'] = (22, -4 * mo.s(t), 7 * mo.c(t))
+        p['Neck'] = (-25, 0, -4 * mo.c(t))
+        p['Head'] = (-55 + 4 * mo.c(2 * t), 6 + 24 * mo.twitch(t, 0.4, 0.04), 0)
+        p['Jaw'] = (8 + 4 * mo.s(2 * t), 0, 0)
+        p.update(bk.sym(fingers(34)))
+        arms(an, p, {'L': (0.95, -2.3 + hL[0], 0.25 + hL[1]), 'R': (-0.95, -2.3 + hR[0], 0.25 + hR[1])},
+             hand_dir=(0.1, -0.3, -1), pole={'L': (1, 0.6, 0.4), 'R': (-1, 0.6, 0.4)})
+        legs(an, p, {'L': (0.75, 0.5 + yL, zL), 'R': (-0.75, 0.5 + yR, zR)},
+             poles={'L': (0.8, -1, 0.3), 'R': (-0.8, -1, 0.3)})
+        return p
+    out.append(('StoopWalk', 54, stoop, True))
+
+    # ---- EdgeLean (loop): crouched at the platform edge, folded over the drop, raking both
+    #      hands down at the track bed and screaming
+    def lean(t):
+        p = {'@root': (0.03 * mo.s(t), 0.6, -2.3 + 0.05 * mo.s(2 * t))}
+        p['Hips'] = (44, 0, 0)
+        p['Spine'] = (30, 0, 4 * mo.s(t))
+        p['Chest'] = (26, 6 * mo.s(t), 6 * mo.s(t))
+        p['Neck'] = (-20, 0, 8 * mo.s(2 * t))
+        p['Head'] = (-22 + 6 * mo.s(3 * t), 10 * mo.s(2 * t + 0.2), 0)
+        p['Jaw'] = (46 + 10 * mo.s(4 * t), 0, 0)
+        wr = {}
+        for side, sgn in SIDES:
+            a = 2 * math.pi * (t + (0 if side == 'L' else 0.5))
+            wr[side] = (0.8 * sgn, -E - 1.4 + 0.5 * math.sin(a), -0.2 + 0.7 * math.cos(a))
+            curl = 15 + 45 * (0.5 - 0.5 * math.cos(a))  # open at the top of the stroke, clenched at the bottom
+            f = fingers(curl, 8, curl * 0.6)
+            p.update(f if side == 'L' else {bk.mirror_name(k): mirror(v) for k, v in f.items()})
+        arms(an, p, wr, hand_dir=(0.1, -0.4, -1), pole={'L': (1, 0.3, 0.3), 'R': (-1, 0.3, 0.3)})
+        legs(an, p, {'L': (0.65, 0.2, 0), 'R': (-0.65, 0.2, 0)},
+             poles={'L': (1, -0.5, 0.2), 'R': (-1, -0.5, 0.2)})
+        return p
+    out.append(('EdgeLean', 60, lean, True))
+
+    # ---- Fall / FallenLoop / PanicClimb share the fallen pose: face down on the track bed,
+    #      spike legs still hooked over the platform edge
+    def k_fallen(sh=0.0, tw=0.0, br=0.0):
+        p = {'@root': (0, -E - 2.3, -(5.05 - (-H + 0.42)) + 0.03 * br)}
+        p['HumanoidRootNode'] = (84, 0, 6)
+        p['Hips'] = (4, 0, 0)
+        p['Spine'] = (2 + 1.5 * br, 0, 0)
+        p['Chest'] = (0, 4 * sh, 0)
+        p['Neck'] = (0, 0, 10 * tw)
+        p['Head'] = (-10, 30 + 20 * tw, 0)
+        p['Jaw'] = (20 + 15 * abs(tw), 0, 0)
+        p.update(bk.sym(fingers(30 + 25 * sh)))
+        arms(an, p, {'L': (1.9, -E - 4.8, -H + 0.12), 'R': (-1.2, -E - 2.2, -H + 0.12)}, hand_dir=(0.2, -0.6, -0.4),
+             pole={'L': (1, 0, 1), 'R': (-1, 0, 1)})
+        legs(an, p, {'L': (0.55, -0.25, 0.08), 'R': (-0.6, -0.1, 0.08)},
+             poles={'L': (0.3, 0.6, 1), 'R': (-0.3, 0.6, 1)})
+        return p
+
+    def k_sway():
+        p = {'@root': (0, -0.3, -0.6), 'Hips': (12, 0, 0), 'Spine': (16, 0, 0), 'Chest': (20, 0, 0),
+             'Neck': (10, 0, 0), 'Head': (10, 20, 0), 'Jaw': (30, 0, 0)}
+        p.update(bk.sym(fingers(10)))
+        hang_arms(an, p, fwd=0.5)
+        legs(an, p, {'L': (0.5, -0.2, 0), 'R': (-0.5, -0.2, 0)})
+        return p
+
+    def k_tip(pitch, root, arm_up):
+        p = {'@root': root, 'Spine': (6, 0, 0), 'Chest': (6, 0, 0), 'Head': (-20, 15, 0), 'Jaw': (40, 0, 0)}
+        p['HumanoidRootNode'] = (pitch, 0, pitch / 15)
+        p.update(bk.sym(fingers(-12, 14, -8)))
+        hp = an.world_head(p, 'Chest')
+        arms(an, p, {'L': (1.5, hp[1] - 1.6, hp[2] + arm_up), 'R': (-1.5, hp[1] - 1.4, hp[2] + arm_up * 0.8)},
+             hand_dir=(0.3, -0.8, 0.2))
+        legs(an, p, {'L': (0.55, -0.25, 0.05), 'R': (-0.6, -0.1, 0.05)},
+             poles={'L': (0.3, -0.4, 1), 'R': (-0.3, -0.4, 1)})
+        return p
+    fallen = k_fallen()
+    impact = k_fallen()
+    impact['@root'] = mo.Vector(fallen['@root']) + mo.Vector((0, -0.1, -0.12))
+    impact['HumanoidRootNode'] = (90, 0, 6)
+    bounce = k_fallen()
+    bounce['@root'] = mo.Vector(fallen['@root']) + mo.Vector((0, 0, 0.18))
+    bounce['HumanoidRootNode'] = (80, 0, 6)
+    out.append(('Fall', 48, bk.track([
+        (0, st), (0.1, k_recoil(), 'snap'), (0.3, k_sway()),
+        (0.46, k_tip(30, (0, -1.0, -0.9), 1.0)),
+        (0.62, k_tip(62, (0, -1.95, -3.9), 1.6), 'in'),
+        (0.76, impact, 'in'), (0.85, bounce, 'out'), (1.0, fallen)]), False))
+
+    def fallen_loop(t):
+        tw = mo.twitch(t, 0.3, 0.04) - mo.twitch(t, 0.72, 0.03)
+        return k_fallen(sh=0.5 + 0.5 * mo.s(3 * t) * mo.twitch(t, 0.5, 0.2, 1.0), tw=tw, br=mo.s(2 * t))
+    out.append(('FallenLoop', 60, fallen_loop, True))
+
+    # ---- PanicClimb: jerks awake, shoves up off the track bed, scrambles up over the edge it is
+    #      still hooked on, and snaps upright on the platform (ends in the normal stand pose)
+    def k_wake():
+        p = k_fallen(tw=1.0)
+        p['Neck'] = (-35, 0, 0)
+        p['Head'] = (-40, 10, 0)
+        p['Jaw'] = (45, 0, 0)
+        p.update(bk.sym(fingers(60, 10, 40)))
+        return p
+
+    def k_push():
+        p = {'@root': (0, -E - 2.0, -(5.05 - (-H + 1.9))), 'Spine': (4, 0, 0), 'Chest': (4, 0, 0),
+             'Neck': (-20, 0, 0), 'Head': (-30, -10, 0), 'Jaw': (35, 0, 0)}
+        p['HumanoidRootNode'] = (60, 0, -4)
+        p.update(bk.sym(fingers(40)))
+        arms(an, p, {'L': (0.9, -E - 3.6, -H + 0.1), 'R': (-0.9, -E - 3.4, -H + 0.1)}, hand_dir=(0, -0.3, -1))
+        legs(an, p, {'L': (0.55, -0.2, 0.05), 'R': (-0.6, -0.1, 0.05)},
+             poles={'L': (0.3, 0.6, 1), 'R': (-0.3, 0.6, 1)})
+        return p
+
+    def k_haul():
+        p = {'@root': (0, -E - 0.95, -4.6), 'Spine': (10, 0, 0), 'Chest': (14, 0, 0), 'Neck': (-6, 0, 0),
+             'Head': (-26, 14, 0), 'Jaw': (30, 0, 0)}
+        p['HumanoidRootNode'] = (35, 0, -8)
+        p.update(bk.sym(fingers(55, 0, 40)))
+        arms(an, p, {'L': (0.95, -E + 0.2, 0.06), 'R': (-0.9, -E - 1.7, -H + 0.1)}, hand_dir=(0, -0.2, -1))
+        legs(an, p, {'L': (0.55, -0.2, 0.05), 'R': (-0.6, -0.1, 0.05)},
+             poles={'L': (0.4, 0.2, 1), 'R': (-0.4, 0.2, 1)})
+        return p
+
+    def k_crouch_edge():
+        p = {'@root': (0, -0.75, -2.6), 'Spine': (20, 0, 0), 'Chest': (22, 0, 0), 'Neck': (6, 0, 0),
+             'Head': (-40, 0, 0), 'Jaw': (20, 0, 0)}
+        p['HumanoidRootNode'] = (40, 0, 6)
+        p.update(bk.sym(fingers(40)))
+        arms(an, p, {'L': (0.95, -0.5, 0.06), 'R': (-0.95, -0.5, 0.06)}, hand_dir=(0, -0.3, -1))
+        legs(an, p, {'L': (0.6, 0.0, 0.0), 'R': (-0.6, 0.1, 0.0)},
+             poles={'L': (0.8, -1, 0.4), 'R': (-0.8, -1, 0.4)})
+        return p
+
+    def k_snap_up():
+        p = {'@root': (0, -0.2, -1.2), 'Spine': (4, 0, 0), 'Chest': (6, 0, 0), 'Neck': (18, 0, 0),
+             'Head': (-36, -30, 25), 'Jaw': (40, 0, 0)}
+        p['HumanoidRootNode'] = (14, 0, -10)
+        p.update(bk.sym(fingers(-14, 18, -10)))
+        arms(an, p, {'L': (2.0, 0.2, 6.6), 'R': (-1.8, 0.5, 6.2)}, hand_dir=(0.6, 0.2, 0.6))
+        legs(an, p, {'L': (0.55, 0.05, 0), 'R': (-0.55, 0.05, 0)})
+        return p
+    twitch_st = dict(st)
+    twitch_st['Head'] = (-30, -20, 30)
+    out.append(('PanicClimb', 66, bk.track([
+        (0, fallen), (0.08, k_wake(), 'snap'), (0.2, k_push()), (0.36, k_haul()), (0.52, k_crouch_edge()),
+        (0.66, k_snap_up(), 'snap'), (0.8, twitch_st, 'snap'), (1.0, st)]), False))
     return out
 
 
