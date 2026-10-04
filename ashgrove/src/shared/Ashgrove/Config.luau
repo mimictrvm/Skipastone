@@ -37,25 +37,47 @@ Config.player = {
 	takenHoldPosition = Vector3.new(0, -300, 0),
 }
 
-Config.pistol = {
-	magazine = 6,
-	startReserve = 12,
-	maxReserve = 12,
-	reloadTime = 3, -- uninterruptible; the flashlight is off for its length
-	fireInterval = 0.4,
-	range = 300,
-	gunshotNoise = 220, -- carries through the whole wing
-	maxOriginOffset = 8, -- anti-cheat: shot origin must be this close to the head
+-- YOUR GUN. Ashgrove doesn't have a gun of its own: it watches yours.
+-- See ServerScriptService.Ashgrove.Shots (how hits are noticed) and
+-- .Hooks (the three calls your gun can make for exact results).
+Config.integration = {
+	-- How a hit on a monster is noticed:
+	--   "auto"   watch monster Humanoids for damage from your gun (the
+	--            body part is worked out from where the shooter aimed). If
+	--            your gun turns out never to damage Humanoids, switch to
+	--            "click" by itself after a few shots, with a warning.
+	--   "damage" damage only.   "click" every click is a hit along the aim.
+	--   "hooks"  only Hooks.reportHit (most exact; wire it into your gun).
+	hitDetection = "auto",
+	gunshotNoise = 220, -- how far a shot is heard; carries through a wing
+	clickRange = 400,
+	-- Reloading needs both hands: the torch goes off for this long when the
+	-- player presses the reload key with a tool out. 0 to turn it off.
+	reloadKey = Enum.KeyCode.R,
+	reloadTorchOff = 2.5,
+}
 
-	-- "Hard to aim in a hurry", not randomly inaccurate.
-	sway = {
-		minDegrees = 0.35, -- fully settled
-		movingDegrees = 4,
-		sprintingDegrees = 7,
-		settleTime = 1.2, -- standing still this long settles fully
-		kickDegrees = 3, -- added by each shot
-		flashlightMultiplier = 1.6, -- holding your own light in the gun hand
-		wanderSpeed = 0.9,
+-- YOUR MODELS. For each monster, Ashgrove looks for a Model with one of
+-- these names (case and spaces ignored) in ServerStorage.AshgroveModels,
+-- then ReplicatedStorage.AshgroveModels, then anywhere in Workspace or
+-- ServerStorage. Found: it's used. Not found: the greybox body is used.
+-- Animation ids are optional ("rbxassetid://..."); empty ones are skipped.
+Config.models = {
+	Dullahan = {
+		names = { "Dullahan", "AH_Ent_Dullahan" },
+		-- The part he carries and sees through. Falls back to any part
+		-- whose name contains "head".
+		headPart = "CarriedHead",
+		animations = { idle = "", walk = "", run = "", attack = "", blind = "" },
+	},
+	Lampshy = {
+		names = { "Lampshy", "Lamp-shy", "AH_Ent_Lampshy" },
+		animations = { idle = "", walk = "", run = "", attack = "" },
+	},
+	Banshee = {
+		names = { "Banshee", "AH_Ent_Banshee" },
+		kneelDrop = 0.8, -- how far she sinks to "kneel" when mourning (greybox: 2.4)
+		animations = { idle = "", keen = "", mourn = "" },
 	},
 }
 

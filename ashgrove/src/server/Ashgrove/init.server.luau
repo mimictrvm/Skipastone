@@ -30,7 +30,7 @@ for _, name in { "Baseplate", "SpawnLocation" } do
 end
 
 if not workspace:FindFirstChild("AshgroveHouse") then
-	require(script.Greybox).build()
+	require(script.House).build()
 end
 
 require(script.Director).start()

@@ -137,6 +137,7 @@ function Lampshy.step(e, _dt: number)
 		end
 		local targetRoot = Crew.root(target :: Player) :: BasePart
 		if e:distanceTo(target :: Player) <= cfg.lungeRange then
+			e:action("attack")
 			Audio.play("lampshyLunge", root, 1)
 			Say.near(root.Position, 40, "[It lunges]", 2, "sound")
 			Crew.hit(target :: Player, 1)

@@ -1,10 +1,9 @@
 --[[
-	Effects: what the server announces, drawn locally. Gunshot tracers and
-	muzzle flashes, lightning, the keen's cold grade, and the spectator
-	camera for a player the Banshee has taken.
+	Effects: what the server announces, drawn locally. Lightning, the
+	keen's cold grade, rain around you when you're outdoors, and the
+	spectator camera for a player the Banshee has taken.
 ]]
 
-local Debris = game:GetService("Debris")
 local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -19,66 +18,11 @@ local player = Players.LocalPlayer
 local Effects = {}
 
 local grade: ColorCorrectionEffect
+local rain: ParticleEmitter
+local keening = false
 local flashing = false
 local spectating = false
 local spectateIndex = 0
-
-local function muzzleOf(shooter: Player): Attachment?
-	local character = shooter.Character
-	local tool = character and character:FindFirstChild("Pistol")
-	local handle = tool and tool:FindFirstChild("Handle")
-	local muzzle = handle and handle:FindFirstChild("Muzzle")
-	return if muzzle and muzzle:IsA("Attachment") then muzzle else nil
-end
-
-local function shotFx(shooter: Player, origin: Vector3, hit: Vector3, kind: string)
-	local muzzle = muzzleOf(shooter)
-	local from = if muzzle then muzzle.WorldPosition else origin
-	if shooter == player then
-		-- Our own camera is the origin; start the tracer just ahead of it.
-		from = origin + (hit - origin).Unit * 1.5 + Vector3.new(0, -0.3, 0)
-	end
-	local length = (hit - from).Magnitude
-	if length > 0.5 then
-		local tracer = Instance.new("Part")
-		tracer.Anchored = true
-		tracer.CanCollide = false
-		tracer.CanQuery = false
-		tracer.CanTouch = false
-		tracer.Material = Enum.Material.Neon
-		tracer.Color = Color3.fromRGB(255, 220, 170)
-		tracer.Size = Vector3.new(0.05, 0.05, length)
-		tracer.CFrame = CFrame.lookAt(from, hit) * CFrame.new(0, 0, -length / 2)
-		tracer.Transparency = 0.3
-		tracer.Parent = workspace.CurrentCamera
-		TweenService:Create(tracer, TweenInfo.new(0.08), { Transparency = 1 }):Play()
-		Debris:AddItem(tracer, 0.1)
-	end
-	if muzzle then
-		local light = muzzle:FindFirstChild("MuzzleFlash")
-		if light and light:IsA("PointLight") then
-			light.Enabled = true
-			task.delay(0.05, function()
-				light.Enabled = false
-			end)
-		end
-	end
-	if kind ~= "none" then
-		local spark = Instance.new("Part")
-		spark.Anchored = true
-		spark.CanCollide = false
-		spark.CanQuery = false
-		spark.CanTouch = false
-		spark.Material = Enum.Material.Neon
-		spark.Color = if kind == "entity" then Color3.fromRGB(200, 60, 50) else Color3.fromRGB(255, 210, 150)
-		spark.Shape = Enum.PartType.Ball
-		spark.Size = Vector3.one * 0.3
-		spark.Position = hit
-		spark.Parent = workspace.CurrentCamera
-		TweenService:Create(spark, TweenInfo.new(0.15), { Transparency = 1, Size = Vector3.one * 0.05 }):Play()
-		Debris:AddItem(spark, 0.2)
-	end
-end
 
 local function lightning()
 	if flashing then
@@ -108,7 +52,52 @@ local function lightning()
 	flashing = false
 end
 
+-- Rain falls around the camera when there's open sky above it. It stops
+-- while she keens, with the storm.
+local function startRain()
+	local cloud = Instance.new("Part")
+	cloud.Name = "AshgroveRain"
+	cloud.Anchored = true
+	cloud.CanCollide = false
+	cloud.CanQuery = false
+	cloud.CanTouch = false
+	cloud.Transparency = 1
+	cloud.Size = Vector3.new(70, 1, 70)
+	rain = Instance.new("ParticleEmitter")
+	rain.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	rain.EmissionDirection = Enum.NormalId.Bottom
+	rain.Rate = 700
+	rain.Lifetime = NumberRange.new(0.5, 0.7)
+	rain.Speed = NumberRange.new(90, 110)
+	rain.Size = NumberSequence.new(0.12)
+	rain.Squash = NumberSequence.new(3)
+	rain.Transparency = NumberSequence.new(0.45)
+	rain.Color = ColorSequence.new(Color3.fromRGB(170, 185, 200))
+	rain.LightInfluence = 1
+	rain.Parent = cloud
+	cloud.Parent = workspace.CurrentCamera
+
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	task.spawn(function()
+		while true do
+			task.wait(0.3)
+			local camera = workspace.CurrentCamera
+			if cloud.Parent ~= camera then
+				cloud.Parent = camera
+			end
+			local at = camera.CFrame.Position
+			cloud.CFrame = CFrame.new(at + Vector3.new(0, 35, 0))
+			local character = player.Character
+			params.FilterDescendantsInstances = if character then { character, cloud } else { cloud }
+			local roof = workspace:Raycast(at, Vector3.new(0, 120, 0), params)
+			rain.Enabled = roof == nil and not keening
+		end
+	end)
+end
+
 local function keen(state: string)
+	keening = state == "start"
 	local goal = if state == "start"
 		then { TintColor = Color3.fromRGB(196, 214, 214), Saturation = -0.55, Brightness = -0.06, Contrast = 0.12 }
 		else { TintColor = Color3.new(1, 1, 1), Saturation = 0, Brightness = 0, Contrast = 0 }
@@ -155,8 +144,8 @@ function Effects.start(hud)
 	grade = Instance.new("ColorCorrectionEffect")
 	grade.Name = "AshgroveKeenGrade"
 	grade.Parent = Lighting
+	startRain()
 
-	Net.event("ShotFx").OnClientEvent:Connect(shotFx)
 	Net.event("Lightning").OnClientEvent:Connect(function()
 		task.spawn(lightning)
 	end)

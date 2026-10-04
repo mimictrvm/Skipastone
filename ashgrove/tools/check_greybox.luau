@@ -3,7 +3,7 @@
 
 	    lune run tools/check_greybox.luau
 
-	Builds the house with Greybox.luau outside Studio, then checks what the
+	Builds the house with House.luau (and Dressing) outside Studio, then checks what the
 	gameplay relies on: every marker the code looks up exists and sits in
 	the right wing, nothing important is buried inside solid geometry, and
 	the main walking routes and the gallery sight line are clear.
@@ -43,9 +43,17 @@ for key, value in roblox :: any do
 	env[key] = value
 end
 
-local source = fs.readFile("src/server/Ashgrove/Greybox.luau")
-local Greybox = luau.load(source, { debugName = "Greybox", environment = env })()
-local house = Greybox.build()
+-- Studio's `script.Parent.X` + require, for the three build modules.
+local modules: { [string]: any } = {}
+env.script = { Parent = modules }
+env.require = function(m)
+	return m
+end
+for _, name in { "Build", "Dressing", "House" } do
+	local source = fs.readFile(`src/server/Ashgrove/{name}.luau`)
+	modules[name] = luau.load(source, { debugName = name, environment = env })()
+end
+local house = modules.House.build()
 
 local Vector3 = roblox.Vector3
 local failures = 0
@@ -144,6 +152,18 @@ end
 
 ------------------------------------------------------------------ checks
 
+-- No part may have a broken (NaN) position or rotation.
+for _, p in house:GetDescendants() do
+	if p:IsA("BasePart") then
+		for _, v in { p.CFrame:GetComponents() } do
+			if v ~= v then
+				fail(`{p:GetFullName()} has an invalid CFrame`)
+				break
+			end
+		end
+	end
+end
+
 -- Every marker the code asks for by name, and the wing it must be in.
 local expected = {
 	Spawn_Van = "Van",
@@ -205,6 +225,83 @@ for _, folderName in { "Notes", "Pickups", "Objects" } do
 		local hit = solidAt(p.CFrame.Position, 0.02)
 		if hit then
 			fail(`{folderName}/{p.Name} at {p.CFrame.Position} is inside {hit.Name}`)
+		end
+	end
+end
+
+-- Everything you interact with has somewhere clear to stand within reach
+-- (a Roblox prompt's range here is 7-8 studs).
+local function floorUnder(position)
+	-- The highest walkable top below a point: floors are at y = 0 and -16.
+	return if position.Y < -1 then -16 else 0
+end
+local function reachable(position): boolean
+	local floorY = floorUnder(position)
+	for r = 2, 6, 1 do
+		for i = 0, 15 do
+			local a = i / 16 * math.pi * 2
+			local spot = Vector3.new(position.X + math.cos(a) * r, floorY, position.Z + math.sin(a) * r)
+			local wing = wingAt(spot + Vector3.new(0, 2, 0))
+			local clear = wing ~= nil
+			for _, dy in { 0.6, 2.5, 4.8 } do
+				if clear and solidAt(spot + Vector3.new(0, dy, 0), 0.05) then
+					clear = false
+				end
+			end
+			if clear then
+				return true
+			end
+		end
+	end
+	return false
+end
+local doorsFolder = house.Interact.Doors
+for _, folderName in { "Notes", "Pickups", "Objects", "Crates" } do
+	for _, p in house.Interact[folderName]:GetChildren() do
+		if p:IsA("BasePart") and not reachable(p.CFrame.Position) then
+			fail(`{folderName}/{p.Name} at {p.CFrame.Position} has nowhere clear to stand within reach`)
+		end
+	end
+end
+for _, site in house.Interact.Rites:GetChildren() do
+	for _, p in site:GetChildren() do
+		if p:IsA("BasePart") and not reachable(p.CFrame.Position) then
+			fail(`{site.Name}/{p.Name} has nowhere clear to stand within reach`)
+		end
+	end
+end
+for _, p in doorsFolder:GetChildren() do
+	if p:IsA("BasePart") and not reachable(p.CFrame.Position) then
+		fail(`Doors/{p.Name} has nowhere clear to stand within reach`)
+	end
+end
+
+-- The Banshee kneels 2.5 studs from the kitchen body; Wren's memo has to
+-- be readable from somewhere further than her crouched disturb radius (4).
+do
+	local body = marker("Body_Kitchen")
+	local memo = house.Interact.Notes:FindFirstChild("Memo_Kitchen")
+	if body and memo then
+		local her = body.CFrame.Position + Vector3.new(-2.5, 0, 2.5)
+		local ok = false
+		local m = memo.CFrame.Position
+		for r = 3, 6.5, 0.5 do
+			for i = 0, 23 do
+				local a = i / 24 * math.pi * 2
+				local spot = Vector3.new(m.X + math.cos(a) * r, 0, m.Z + math.sin(a) * r)
+				if (spot - Vector3.new(her.X, 0, her.Z)).Magnitude > 5 and wingAt(spot + Vector3.new(0, 2, 0)) == "ServantsWing" then
+					local clear = true
+					for _, dy in { 0.6, 2.5, 4.8 } do
+						if solidAt(spot + Vector3.new(0, dy, 0), 0.05) then
+							clear = false
+						end
+					end
+					ok = ok or clear
+				end
+			end
+		end
+		if not ok then
+			fail("Memo_Kitchen can't be reached without getting within 5 studs of where the Banshee kneels")
 		end
 	end
 end

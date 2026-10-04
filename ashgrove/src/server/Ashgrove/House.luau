@@ -1,16 +1,20 @@
 --[[
-	Greybox: builds Story 1's Ashgrove House out of grey blocks, so the game
-	is playable before any art exists. The art brief's assets replace these
-	blocks one-for-one; the gameplay never looks at the blocks themselves,
-	only at what's in the Zones, Markers and Interact folders.
+	House: Ashgrove House, Story 1. Builds the layout the gameplay reads
+	(walls, floors, zones, markers, interactives), then hands over to
+	Dressing for everything that makes it look like a house: panelling,
+	furniture, chandeliers, the roofs, the grounds, the cliff and the sea.
 
 	Boot builds it at runtime if the workspace has no "AshgroveHouse". To
 	see it (and edit it) in Studio before pressing Play, run this in the
 	Command Bar:
 
-	    require(game.ServerScriptService.Ashgrove.Greybox).build()
+	    require(game.ServerScriptService.Ashgrove.House).build()
 
 	Once it exists in the place, Boot uses yours and never rebuilds it.
+	Move furniture, swap pieces for the art brief's AH_Kit_* / AH_Prop_*
+	models, restyle anything in Geometry: the gameplay never looks at it.
+	Keep Zones, Markers and Interact (they're what the game reads), then
+	run tools/check_greybox.luau to catch anything you've blocked.
 
 	Layout (studs; 1 stud = 0.28 m; ground-floor top at y = 0; +X is east,
 	towards the cliff):
@@ -24,6 +28,7 @@
 	        housekeeper 60..85; servants' hall 85..110
 	    Cellar vault     x   20..80     z -20..30, floor at y = -16
 	    Cliff edge       x  130, sea far below
+	    Upper floor, study, cliff stair: built shut, for later stories
 
 	What the systems read:
 	    Zones/*     invisible boxes. Attributes: Wing, Room, Sanctuary,
@@ -34,7 +39,10 @@
 	                BellBoard, Glows
 ]]
 
-local Greybox = {}
+local Build = require(script.Parent.Build)
+local Dressing = require(script.Parent.Dressing)
+
+local House = {}
 
 local C = {
 	stone = Color3.fromRGB(88, 86, 82),
@@ -58,37 +66,64 @@ local C = {
 	paper = Color3.fromRGB(218, 210, 188),
 	bone = Color3.fromRGB(206, 196, 168),
 	lamp = Color3.fromRGB(255, 214, 160),
+	frame = Color3.fromRGB(40, 30, 24),
+	brick = Color3.fromRGB(96, 66, 54),
+	oakDark = Color3.fromRGB(48, 34, 26),
+	hallPaper = Color3.fromRGB(46, 58, 48), -- deep green
+	galleryPaper = Color3.fromRGB(84, 28, 30), -- oxblood
+	limewash = Color3.fromRGB(168, 160, 142),
+	limewashDirty = Color3.fromRGB(122, 114, 98),
+	fadedPaper = Color3.fromRGB(104, 92, 76),
+	cornice = Color3.fromRGB(150, 144, 130),
+}
+
+type Layer = { colour: Color3, material: Enum.Material, height: number? }
+type Finish = {
+	lower: Layer?,
+	upper: Layer,
+	trim: Color3,
+	skirting: boolean?,
+	dado: boolean?,
+	cornice: boolean?,
+}
+
+-- Interior finishes, room by room.
+local F: { [string]: Finish } = {
+	hall = {
+		lower = { colour = C.oak, material = Enum.Material.Wood, height = 6 },
+		upper = { colour = C.hallPaper, material = Enum.Material.Fabric },
+		trim = C.oakDark,
+		skirting = true,
+		dado = true,
+		cornice = true,
+	},
+	gallery = {
+		lower = { colour = C.oakDark, material = Enum.Material.Wood, height = 4.5 },
+		upper = { colour = C.galleryPaper, material = Enum.Material.Fabric },
+		trim = C.frame,
+		skirting = true,
+		dado = true,
+		cornice = true,
+	},
+	servants = {
+		lower = { colour = C.limewashDirty, material = Enum.Material.Plaster, height = 3.5 },
+		upper = { colour = C.limewash, material = Enum.Material.Plaster },
+		trim = C.oakDark,
+		skirting = true,
+	},
+	housekeeper = {
+		lower = { colour = C.oak, material = Enum.Material.Wood, height = 3.5 },
+		upper = { colour = C.fadedPaper, material = Enum.Material.Fabric },
+		trim = C.oakDark,
+		skirting = true,
+		dado = true,
+	},
 }
 
 type Gap = { at: number, width: number, height: number, sill: number?, glass: boolean? }
 
-local function part(parent: Instance, name: string, size: Vector3, cf: CFrame, colour: Color3, material: Enum.Material?): Part
-	local p = Instance.new("Part")
-	p.Name = name
-	p.Anchored = true
-	p.Size = size
-	p.CFrame = cf
-	p.Color = colour
-	p.Material = material or Enum.Material.SmoothPlastic
-	p.TopSurface = Enum.SurfaceType.Smooth
-	p.BottomSurface = Enum.SurfaceType.Smooth
-	p.Parent = parent
-	return p
-end
-
-local function box(parent: Instance, name: string, x1: number, x2: number, y1: number, y2: number, z1: number, z2: number, colour: Color3, material: Enum.Material?): Part
-	local size = Vector3.new(math.abs(x2 - x1), math.abs(y2 - y1), math.abs(z2 - z1))
-	local centre = Vector3.new((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2)
-	return part(parent, name, size, CFrame.new(centre), colour, material)
-end
-
-local function invisible(p: BasePart): BasePart
-	p.Transparency = 1
-	p.CanCollide = false
-	p.CanQuery = false
-	p.CanTouch = false
-	return p
-end
+local part, box, invisible, folder = Build.part, Build.box, Build.invisible, Build.folder
+local setAttributes = Build.attributes
 
 -- A 1-stud-thick wall running along `axis` from `from` to `to`, centred on
 -- `fixed` on the other axis, with door and window gaps.
@@ -121,6 +156,10 @@ local function wall(parent: Instance, name: string, axis: string, from: number, 
 		if g.glass then
 			local glass = seg(name .. "Glass", a, b, y0 + sill, y0 + top, 0.1, C.glass, Enum.Material.Glass)
 			glass.Transparency = 0.55
+			-- Mullion and transom: dark timber in the window's plane.
+			seg(name .. "Mullion", g.at - 0.15, g.at + 0.15, y0 + sill, y0 + top, 0.2, C.frame, Enum.Material.Wood)
+			local transom = y0 + sill + g.height * 0.66
+			seg(name .. "Transom", a, b, transom - 0.15, transom + 0.15, 0.2, C.frame, Enum.Material.Wood)
 		end
 		cursor = b
 	end
@@ -133,39 +172,95 @@ local function slab(parent: Instance, name: string, x1: number, x2: number, z1: 
 	return box(parent, name, x1, x2, top - 1, top, z1, z2, colour, material)
 end
 
-local function folder(parent: Instance, name: string): Folder
-	local f = Instance.new("Folder")
-	f.Name = name
-	f.Parent = parent
-	return f
-end
+-- Lines one face of a wall with a room's finish: panelling, wallpaper or
+-- limewash, skirting, dado rail and cornice, and door and window casings.
+-- `side` is +1 for the face towards +X/+Z, -1 for the other. Only
+-- [from, to] along the wall is lined (a wall can face several rooms).
+-- Linings are cosmetic: no collisions.
+local function lineFace(parent: Instance, axis: string, fixed: number, side: number, from: number, to: number, y0: number, height: number, gaps: { Gap }, finish: Finish)
+	local face = fixed + side * 0.5
+	local function slabOn(name: string, a: number, b: number, y1: number, y2: number, depth: number, colour: Color3, material: Enum.Material)
+		if b - a < 0.05 or y2 - y1 < 0.05 then
+			return
+		end
+		local n1, n2 = face, face + side * depth
+		if n1 > n2 then
+			n1, n2 = n2, n1
+		end
+		local p = if axis == "X" then box(parent, name, a, b, y1, y2, n1, n2, colour, material) else box(parent, name, n1, n2, y1, y2, a, b, colour, material)
+		Build.decor(p)
+	end
 
-local function setAttributes(inst: Instance, attrs: { [string]: any }?)
-	if attrs then
-		for k, v in attrs do
-			inst:SetAttribute(k, v)
+	local inRange = {}
+	for _, g in gaps do
+		local a, b = g.at - g.width / 2, g.at + g.width / 2
+		if b > from and a < to then
+			table.insert(inRange, { a = math.max(a, from), b = math.min(b, to), sill = g.sill or 0, top = (g.sill or 0) + g.height })
+		end
+	end
+	table.sort(inRange, function(g1, g2)
+		return g1.a < g2.a
+	end)
+
+	-- The solid pieces of this face: full height, under a sill, over a lintel.
+	local pieces = {}
+	local cursor = from
+	for _, g in inRange do
+		if g.a > cursor then
+			table.insert(pieces, { cursor, g.a, y0, y0 + height })
+		end
+		if g.sill > 0 then
+			table.insert(pieces, { g.a, g.b, y0, y0 + g.sill })
+		end
+		if g.top < height then
+			table.insert(pieces, { g.a, g.b, y0 + g.top, y0 + height })
+		end
+		cursor = g.b
+	end
+	if cursor < to then
+		table.insert(pieces, { cursor, to, y0, y0 + height })
+	end
+
+	local lowerTop = y0 + (if finish.lower then finish.lower.height or 0 else 0)
+	for _, piece in pieces do
+		local a, b, y1, y2 = piece[1], piece[2], piece[3], piece[4]
+		if finish.lower and y1 < lowerTop then
+			slabOn("Panelling", a, b, y1, math.min(y2, lowerTop), 0.12, finish.lower.colour, finish.lower.material)
+		end
+		if y2 > lowerTop then
+			slabOn("Lining", a, b, math.max(y1, lowerTop), y2, 0.08, finish.upper.colour, finish.upper.material)
+		end
+		if finish.skirting and y1 == y0 then
+			slabOn("Skirting", a, b, y0, y0 + 0.8, 0.25, finish.trim, Enum.Material.Wood)
+		end
+		if finish.dado and finish.lower and y1 <= lowerTop and y2 >= lowerTop + 0.3 then
+			slabOn("DadoRail", a, b, lowerTop, lowerTop + 0.3, 0.22, finish.trim, Enum.Material.Wood)
+		end
+		if finish.cornice and y2 == y0 + height then
+			slabOn("Cornice", a, b, y0 + height - 0.7, y0 + height, 0.45, C.cornice, Enum.Material.Plaster)
+		end
+	end
+
+	-- Casings: architraves round doors, frames and a sill board on windows.
+	for _, g in inRange do
+		if g.sill == 0 then
+			slabOn("Architrave", g.a - 0.35, g.a, y0, y0 + g.top + 0.35, 0.22, finish.trim, Enum.Material.Wood)
+			slabOn("Architrave", g.b, g.b + 0.35, y0, y0 + g.top + 0.35, 0.22, finish.trim, Enum.Material.Wood)
+			slabOn("Architrave", g.a, g.b, y0 + g.top, y0 + g.top + 0.35, 0.22, finish.trim, Enum.Material.Wood)
+		else
+			slabOn("WindowCasing", g.a - 0.3, g.a, y0 + g.sill, y0 + g.top, 0.18, finish.trim, Enum.Material.Wood)
+			slabOn("WindowCasing", g.b, g.b + 0.3, y0 + g.sill, y0 + g.top, 0.18, finish.trim, Enum.Material.Wood)
+			slabOn("WindowCasing", g.a - 0.3, g.b + 0.3, y0 + g.top, y0 + g.top + 0.3, 0.18, finish.trim, Enum.Material.Wood)
+			slabOn("WindowSill", g.a - 0.4, g.b + 0.4, y0 + g.sill - 0.25, y0 + g.sill, 0.45, finish.trim, Enum.Material.Wood)
 		end
 	end
 end
 
 local function label(p: BasePart, text: string, face: Enum.NormalId)
-	local gui = Instance.new("SurfaceGui")
-	gui.Face = face
-	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-	gui.PixelsPerStud = 40
-	gui.LightInfluence = 1
-	local t = Instance.new("TextLabel")
-	t.Size = UDim2.fromScale(1, 1)
-	t.BackgroundTransparency = 1
-	t.Text = text
-	t.TextScaled = true
-	t.Font = Enum.Font.Garamond
-	t.TextColor3 = C.paper
-	t.Parent = gui
-	gui.Parent = p
+	Build.label(p, text, face, C.paper)
 end
 
-function Greybox.build(opts: { replace: boolean? }?): Model
+function House.build(opts: { replace: boolean? }?): Model
 	local existing = workspace:FindFirstChild("AshgroveHouse")
 	if existing then
 		if opts and opts.replace then
@@ -297,8 +392,18 @@ function Greybox.build(opts: { replace: boolean? }?): Model
 	vanLight.Color = C.lamp
 	vanLight.Parent = vanLamp
 
-	-- The first crew's van, dead and open.
+	-- The first crew's van, dead and open. Its lights come on once, at the
+	-- very end of Story 1 (Director).
 	box(geo, "CrewOneVan", -128, -114, 1.5, 8.5, -33.5, -26.5, Color3.fromRGB(70, 74, 80), Enum.Material.Metal)
+	local crewLights = box(geo, "CrewOneHeadlights", -114, -113.8, 2.5, 3.5, -33, -27, C.glass, Enum.Material.Glass)
+	local crewBeam = Instance.new("SpotLight")
+	crewBeam.Face = Enum.NormalId.Right
+	crewBeam.Range = 60
+	crewBeam.Angle = 50
+	crewBeam.Brightness = 3
+	crewBeam.Color = C.lamp
+	crewBeam.Enabled = false
+	crewBeam.Parent = crewLights
 
 	local spawn = Instance.new("SpawnLocation")
 	spawn.Name = "AshgroveSpawn"
@@ -313,24 +418,32 @@ function Greybox.build(opts: { replace: boolean? }?): Model
 
 	------------------------------------------------------------------ hall
 	slab(geo, "HallFloor", -60, -10, -30, 30, 0, C.floor, Enum.Material.WoodPlanks)
-	box(geo, "HallCeiling", -60, -10, 24, 25, -30, 30, C.plaster)
-	wall(geo, "HallWest", "Z", -30, 30, -60, 0, 24, {
+	box(geo, "HallCeiling", -60, -10, 24, 25, -30, 30, C.cornice, Enum.Material.Plaster)
+	local hallWestGaps = {
 		{ at = 0, width = 8, height = 12 },
 		{ at = -18, width = 5, height = 10, sill = 4, glass = true },
 		{ at = 18, width = 5, height = 10, sill = 4, glass = true },
-	}, C.stone, Enum.Material.Cobblestone)
-	wall(geo, "HallNorth", "X", -60, -10, -30, 0, 24, {
+	}
+	local hallNorthGaps = {
 		{ at = -45, width = 5, height = 12, sill = 4, glass = true },
 		{ at = -25, width = 5, height = 12, sill = 4, glass = true },
-	}, C.stone, Enum.Material.Cobblestone)
-	wall(geo, "HallSouth", "X", -60, -10, 30, 0, 24, {
+	}
+	local hallSouthGaps = {
 		{ at = -45, width = 5, height = 12, sill = 4, glass = true },
 		{ at = -25, width = 5, height = 12, sill = 4, glass = true },
-	}, C.stone, Enum.Material.Cobblestone)
-	wall(geo, "HallEast", "Z", -30, 30, -10, 0, 24, {
+	}
+	local hallEastGaps = {
 		{ at = -19, width = 10, height = 14 },
 		{ at = 11, width = 5, height = 9 },
-	}, C.wallpaper)
+	}
+	wall(geo, "HallWest", "Z", -30, 30, -60, 0, 24, hallWestGaps, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "HallNorth", "X", -60, -10, -30, 0, 24, hallNorthGaps, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "HallSouth", "X", -60, -10, 30, 0, 24, hallSouthGaps, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "HallEast", "Z", -30, 30, -10, 0, 24, hallEastGaps, C.stone, Enum.Material.Cobblestone)
+	lineFace(geo, "Z", -60, 1, -30, 30, 0, 24, hallWestGaps, F.hall)
+	lineFace(geo, "X", -30, 1, -60, -10, 0, 24, hallNorthGaps, F.hall)
+	lineFace(geo, "X", 30, -1, -60, -10, 0, 24, hallSouthGaps, F.hall)
+	lineFace(geo, "Z", -10, -1, -30, 30, 0, 24, hallEastGaps, F.hall)
 
 	-- Grand stair: the upper floor is for later stories, so it's blocked.
 	for i = 0, 11 do
@@ -388,21 +501,36 @@ function Greybox.build(opts: { replace: boolean? }?): Model
 		LockedText = "Locked. The first crew must have had the key.",
 	})
 
+	-- Shut for later stories (see docs/ASHGROVE_STORY.md).
+	door("StudyDoor", -54, -50, 0, 9, -29.5, -29.2, {
+		StartsLocked = true,
+		LockedText = "C.A. PRIVATE. Locked, and the lock is newer than the door.",
+	})
+	door("UpperStair", -57, -38, 1, 3.5, 21.3, 21.6, {
+		StartsLocked = true,
+		LockedText = "The stairs are rotten through. The first crew roped them off.",
+	})
+
 	marker("Spawn_Van", Vector3.new(-124, 3, 0), Vector3.new(0, 3, 0))
 	marker("Spawn_HallCamp", Vector3.new(-36, 3, 4), Vector3.new(0, 3, 4))
 
 	------------------------------------------------------------------ gallery
 	slab(geo, "GalleryFloor", -10, 110, -30, -8, 0, C.floor, Enum.Material.WoodPlanks)
-	box(geo, "GalleryCeiling", -10, 110, 20, 21, -30, -8, C.plaster)
+	box(geo, "GalleryCeiling", -10, 110, 20, 21, -30, -8, C.cornice, Enum.Material.Plaster)
 	local galleryWindows = {}
 	for _, wx in { 5, 20, 35, 50, 65, 80, 95 } do
 		table.insert(galleryWindows, { at = wx, width = 6, height = 13, sill = 3, glass = true })
 	end
-	wall(geo, "GalleryNorth", "X", -10, 110, -30, 0, 20, galleryWindows, C.stone, Enum.Material.Cobblestone)
-	wall(geo, "GallerySouth", "X", -10, 110, -8, 0, 20, {}, C.wallpaper)
-	wall(geo, "GalleryEast", "Z", -30, -8, 110, 0, 20, {
+	local galleryEastGaps = {
 		{ at = -19, width = 6, height = 13, sill = 3, glass = true },
-	}, C.stone, Enum.Material.Cobblestone)
+	}
+	wall(geo, "GalleryNorth", "X", -10, 110, -30, 0, 20, galleryWindows, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "GallerySouth", "X", -10, 110, -8, 0, 20, {}, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "GalleryEast", "Z", -30, -8, 110, 0, 20, galleryEastGaps, C.stone, Enum.Material.Cobblestone)
+	lineFace(geo, "X", -30, 1, -10, 110, 0, 20, galleryWindows, F.gallery)
+	lineFace(geo, "X", -8, -1, -10, 110, 0, 20, {}, F.gallery)
+	lineFace(geo, "Z", 110, -1, -30, -8, 0, 20, galleryEastGaps, F.gallery)
+	lineFace(geo, "Z", -10, 1, -30, -8, 0, 20, hallEastGaps, F.gallery)
 
 	-- Portraits of the objects' previous owners, mostly under dust sheets.
 	-- Two are torn open at head height: the Dullahan studies faces.
@@ -459,26 +587,47 @@ function Greybox.build(opts: { replace: boolean? }?): Model
 	slab(geo, "SculleryFloor", 58, 60, 24, 30, 0, C.flag, Enum.Material.Slate)
 	slab(geo, "HousekeeperFloor", 60, 85, 14, 30, 0, C.floor, Enum.Material.WoodPlanks)
 	slab(geo, "ServantsHallFloor", 85, 110, 14, 30, 0, C.floor, Enum.Material.WoodPlanks)
-	box(geo, "WingCeiling", -10, 110, 12, 13, 8, 30, C.plaster)
+	box(geo, "WingCeiling", -10, 110, 12, 13, 8, 30, C.limewashDirty, Enum.Material.Plaster)
 
-	wall(geo, "CorridorNorth", "X", -10, 110, 8, 0, 12, {}, C.plaster)
-	wall(geo, "CorridorSouth", "X", -10, 110, 14, 0, 12, {
+	local corridorSouthGaps = {
 		{ at = 10, width = 5, height = 9 },
 		{ at = 45, width = 5, height = 9 },
 		{ at = 72, width = 4, height = 9 },
 		{ at = 97, width = 5, height = 9 },
-	}, C.plaster)
-	wall(geo, "WingSouth", "X", -10, 110, 30, 0, 12, {
+	}
+	local wingSouthGaps = {
 		{ at = 0, width = 4, height = 4, sill = 4, glass = true },
 		{ at = 20, width = 4, height = 4, sill = 4, glass = true },
 		{ at = 72, width = 3, height = 4, sill = 4 }, -- the rite window fills this
 		{ at = 97, width = 4, height = 4, sill = 4, glass = true },
-	}, C.stone, Enum.Material.Cobblestone)
-	wall(geo, "KitchenScullery", "Z", 14, 30, 30, 0, 12, {}, C.plaster)
-	wall(geo, "ScullerySide", "Z", 14, 30, 60, 0, 12, {}, C.plaster)
-	wall(geo, "HousekeeperSide", "Z", 14, 30, 85, 0, 12, {}, C.plaster)
+	}
+	wall(geo, "CorridorNorth", "X", -10, 110, 8, 0, 12, {}, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "CorridorSouth", "X", -10, 110, 14, 0, 12, corridorSouthGaps, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "WingSouth", "X", -10, 110, 30, 0, 12, wingSouthGaps, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "KitchenScullery", "Z", 14, 30, 30, 0, 12, {}, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "ScullerySide", "Z", 14, 30, 60, 0, 12, {}, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "HousekeeperSide", "Z", 14, 30, 85, 0, 12, {}, C.stone, Enum.Material.Cobblestone)
 	wall(geo, "WingEast", "Z", 8, 30, 110, 0, 12, {}, C.stone, Enum.Material.Cobblestone)
 	wall(geo, "CourtyardEast", "Z", -8, 8, 110, 0, 12, {}, C.stone, Enum.Material.Cobblestone)
+
+	-- Corridor.
+	lineFace(geo, "X", 8, 1, -10, 110, 0, 12, {}, F.servants)
+	lineFace(geo, "X", 14, -1, -10, 110, 0, 12, corridorSouthGaps, F.servants)
+	lineFace(geo, "Z", -10, 1, 8, 14, 0, 12, hallEastGaps, F.servants)
+	lineFace(geo, "Z", 110, -1, 8, 14, 0, 12, {}, F.servants)
+	-- The rooms off it: { x1, x2, finish }.
+	for _, room in {
+		{ -10, 30, F.servants }, -- kitchen
+		{ 30, 60, F.servants }, -- scullery
+		{ 60, 85, F.housekeeper },
+		{ 85, 110, F.servants }, -- servants' hall
+	} do
+		local x1, x2, finish = room[1], room[2], room[3]
+		lineFace(geo, "X", 14, 1, x1, x2, 0, 12, corridorSouthGaps, finish)
+		lineFace(geo, "X", 30, -1, x1, x2, 0, 12, wingSouthGaps, finish)
+		lineFace(geo, "Z", x1, 1, 14, 30, 0, 12, if x1 == -10 then hallEastGaps else {}, finish)
+		lineFace(geo, "Z", x2, -1, 14, 30, 0, 12, {}, finish)
+	end
 
 	-- Bell board, west end of the corridor.
 	local bellBoard = Instance.new("Model")
@@ -586,10 +735,10 @@ function Greybox.build(opts: { replace: boolean? }?): Model
 
 	------------------------------------------------------------------ vault
 	slab(geo, "VaultFloor", 20, 80, -20, 30, -16, C.stone, Enum.Material.Slate)
-	wall(geo, "VaultNorth", "X", 20, 80, -20, -16, 15, {}, C.stone, Enum.Material.Cobblestone)
-	wall(geo, "VaultSouth", "X", 20, 80, 30, -16, 15, {}, C.stone, Enum.Material.Cobblestone)
-	wall(geo, "VaultWest", "Z", -20, 30, 20, -16, 15, {}, C.stone, Enum.Material.Cobblestone)
-	wall(geo, "VaultEast", "Z", -20, 30, 80, -16, 15, {}, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "VaultNorth", "X", 20, 80, -20, -16, 15, {}, C.brick, Enum.Material.Brick)
+	wall(geo, "VaultSouth", "X", 20, 80, 30, -16, 15, {}, C.brick, Enum.Material.Brick)
+	wall(geo, "VaultWest", "Z", -20, 30, 20, -16, 15, {}, C.brick, Enum.Material.Brick)
+	wall(geo, "VaultEast", "Z", -20, 30, 80, -16, 15, {}, C.brick, Enum.Material.Brick)
 
 	-- Iron cages for the worst of the collection.
 	for _, cx in { 30, 42, 66, 76 } do
@@ -643,9 +792,11 @@ function Greybox.build(opts: { replace: boolean? }?): Model
 	zone("ServantsHall", 85, 110, -1, 13, 14, 30, { Wing = "ServantsWing", Room = "ServantsHall", Priority = 2 })
 	zone("Vault", 20, 80, -17, -1, -20, 30, { Wing = "Vault", Room = "Vault", Priority = 3 })
 
+	Dressing.dress(root)
+
 	root.WorldPivot = CFrame.new(0, 0, 0)
 	root.Parent = workspace
 	return root
 end
 
-return Greybox
+return House

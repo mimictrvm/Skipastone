@@ -86,7 +86,7 @@ def main():
 	  ReplicatedStorage.Ashgrove                       shared modules
 	  ServerScriptService.Ashgrove                     server Script + modules
 	  StarterPlayer.StarterPlayerScripts.AshgroveClient  client LocalScript
-	and builds the greybox house as Workspace.AshgroveHouse, removing the
+	and builds the house as Workspace.AshgroveHouse, removing the
 	template's Baseplate and SpawnLocation (the Baseplate fills the cellar).
 	One Ctrl+Z undoes the whole install.
 
@@ -156,7 +156,7 @@ local function install()
 		end
 	end
 	if not workspace:FindFirstChild("AshgroveHouse") then
-		require(game:GetService("ServerScriptService").Ashgrove.Greybox).build()
+		require(game:GetService("ServerScriptService").Ashgrove.House).build()
 	end
 
 	if recording then

@@ -9,8 +9,8 @@
 	Crew.wiped).
 
 	A committed action (securing an object, a rite step, a revive) roots the
-	player and blocks shooting for its length. The player can't cancel it;
-	a hit can.
+	player and puts their gun away for its length. The player can't cancel
+	it; a hit can.
 
 	Player attributes the client reads: Hits, Downed, Taken, MoveMode,
 	Flashlight, LightOn, Battery, HasGold, WardRaised, WardReadyAt,
@@ -175,6 +175,10 @@ local function refreshSpeed(player: Player)
 		speed = p.walkSpeed
 	end
 	humanoid.WalkSpeed = speed
+	-- Down, taken or busy: hands are full, so your gun is put away.
+	if s.downed or s.taken or s.commit then
+		humanoid:UnequipTools()
+	end
 	humanoid.UseJumpPower = true
 	humanoid.JumpPower = if s.downed or s.commit or s.taken then 0 else p.jumpPower
 	humanoid.HipHeight = if s.downed then math.max(0.2, s.hipHeight - 1.2) else s.hipHeight
@@ -564,6 +568,14 @@ local function onCharacter(player: Player, character: Model)
 
 	refreshSpeed(player)
 	updateLight(player)
+
+	character.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") and (s.downed or s.taken or s.commit) then
+			task.defer(function()
+				humanoid:UnequipTools()
+			end)
+		end
+	end)
 
 	task.spawn(function()
 		if not character.Parent then

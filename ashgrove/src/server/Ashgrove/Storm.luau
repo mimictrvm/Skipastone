@@ -83,8 +83,62 @@ local function flash()
 	end)
 end
 
+-- Dressing's living details: failing bulbs and candles (Flicker =
+-- "bulb"), the lit attic window that sometimes goes dark (Flicker =
+-- "window"), and the lighthouse beam (Spin).
+local function animateDetails()
+	local bulbs, windows, spinners = {}, {}, {}
+	for _, d in Map.root():GetDescendants() do
+		if d:IsA("Light") then
+			local kind = d:GetAttribute("Flicker")
+			if kind == "bulb" then
+				table.insert(bulbs, { light = d, base = d.Brightness })
+			elseif kind == "window" then
+				table.insert(windows, { light = d, base = d.Brightness })
+			end
+		elseif d:IsA("BasePart") and d:GetAttribute("Spin") then
+			table.insert(spinners, d)
+		end
+	end
+	task.spawn(function()
+		while true do
+			task.wait(0.08)
+			for _, b in bulbs do
+				local r = math.random()
+				b.light.Brightness = if r < 0.06 then 0 elseif r < 0.2 then b.base * 0.4 else b.base
+			end
+		end
+	end)
+	for _, w in windows do
+		task.spawn(function()
+			while true do
+				w.light.Enabled = true
+				task.wait(20 + math.random() * 40)
+				w.light.Enabled = false
+				task.wait(4 + math.random() * 10)
+			end
+		end)
+	end
+	if #spinners > 0 then
+		task.spawn(function()
+			local angle = 0
+			while true do
+				local dt = task.wait(0.05)
+				angle += dt * 0.6
+				for _, beam in spinners do
+					local centre = beam:GetAttribute("SpinCentre")
+					if typeof(centre) == "Vector3" then
+						beam.CFrame = CFrame.new(centre) * CFrame.Angles(0, angle, 0) * CFrame.new(0, 0, -beam.Size.Z / 2)
+					end
+				end
+			end
+		end)
+	end
+end
+
 function Storm.start()
 	setupLighting()
+	animateDetails()
 	rain = Audio.loop("rain", SoundService, Config.storm.rainVolume[0])
 	task.spawn(function()
 		while true do

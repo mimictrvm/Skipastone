@@ -1,5 +1,5 @@
 --[[
-	Builds a ready-to-open Studio place with the greybox already in the
+	Builds a ready-to-open Studio place with the house already built in the
 	Workspace (so level designers can see and move it before pressing Play).
 	Needs Rojo and Lune:
 
@@ -41,8 +41,17 @@ for key, value in roblox :: any do
 	env[key] = value
 end
 
-local greybox = game:GetService("ServerScriptService").Ashgrove.Greybox
-luau.load(greybox.Source, { debugName = "Greybox", environment = env })().build()
+-- Studio's `script.Parent.X` + require, for the three build modules.
+local server = game:GetService("ServerScriptService").Ashgrove
+local modules: { [string]: any } = {}
+env.script = { Parent = modules }
+env.require = function(m)
+	return m
+end
+for _, name in { "Build", "Dressing", "House" } do
+	modules[name] = luau.load(server[name].Source, { debugName = name, environment = env })()
+end
+modules.House.build()
 
 fs.writeFile(output, roblox.serializePlace(game))
 print("wrote " .. output)

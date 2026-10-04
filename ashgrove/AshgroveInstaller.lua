@@ -13,7 +13,7 @@
 	  ReplicatedStorage.Ashgrove                       shared modules
 	  ServerScriptService.Ashgrove                     server Script + modules
 	  StarterPlayer.StarterPlayerScripts.AshgroveClient  client LocalScript
-	and builds the greybox house as Workspace.AshgroveHouse, removing the
+	and builds the house as Workspace.AshgroveHouse, removing the
 	template's Baseplate and SpawnLocation (the Baseplate fills the cellar).
 	One Ctrl+Z undoes the whole install.
 
@@ -119,25 +119,47 @@ Config.player = {
 	takenHoldPosition = Vector3.new(0, -300, 0),
 }
 
-Config.pistol = {
-	magazine = 6,
-	startReserve = 12,
-	maxReserve = 12,
-	reloadTime = 3, -- uninterruptible; the flashlight is off for its length
-	fireInterval = 0.4,
-	range = 300,
-	gunshotNoise = 220, -- carries through the whole wing
-	maxOriginOffset = 8, -- anti-cheat: shot origin must be this close to the head
+-- YOUR GUN. Ashgrove doesn't have a gun of its own: it watches yours.
+-- See ServerScriptService.Ashgrove.Shots (how hits are noticed) and
+-- .Hooks (the three calls your gun can make for exact results).
+Config.integration = {
+	-- How a hit on a monster is noticed:
+	--   "auto"   watch monster Humanoids for damage from your gun (the
+	--            body part is worked out from where the shooter aimed). If
+	--            your gun turns out never to damage Humanoids, switch to
+	--            "click" by itself after a few shots, with a warning.
+	--   "damage" damage only.   "click" every click is a hit along the aim.
+	--   "hooks"  only Hooks.reportHit (most exact; wire it into your gun).
+	hitDetection = "auto",
+	gunshotNoise = 220, -- how far a shot is heard; carries through a wing
+	clickRange = 400,
+	-- Reloading needs both hands: the torch goes off for this long when the
+	-- player presses the reload key with a tool out. 0 to turn it off.
+	reloadKey = Enum.KeyCode.R,
+	reloadTorchOff = 2.5,
+}
 
-	-- "Hard to aim in a hurry", not randomly inaccurate.
-	sway = {
-		minDegrees = 0.35, -- fully settled
-		movingDegrees = 4,
-		sprintingDegrees = 7,
-		settleTime = 1.2, -- standing still this long settles fully
-		kickDegrees = 3, -- added by each shot
-		flashlightMultiplier = 1.6, -- holding your own light in the gun hand
-		wanderSpeed = 0.9,
+-- YOUR MODELS. For each monster, Ashgrove looks for a Model with one of
+-- these names (case and spaces ignored) in ServerStorage.AshgroveModels,
+-- then ReplicatedStorage.AshgroveModels, then anywhere in Workspace or
+-- ServerStorage. Found: it's used. Not found: the greybox body is used.
+-- Animation ids are optional ("rbxassetid://..."); empty ones are skipped.
+Config.models = {
+	Dullahan = {
+		names = { "Dullahan", "AH_Ent_Dullahan" },
+		-- The part he carries and sees through. Falls back to any part
+		-- whose name contains "head".
+		headPart = "CarriedHead",
+		animations = { idle = "", walk = "", run = "", attack = "", blind = "" },
+	},
+	Lampshy = {
+		names = { "Lampshy", "Lamp-shy", "AH_Ent_Lampshy" },
+		animations = { idle = "", walk = "", run = "", attack = "" },
+	},
+	Banshee = {
+		names = { "Banshee", "AH_Ent_Banshee" },
+		kneelDrop = 0.8, -- how far she sinks to "kneel" when mourning (greybox: 2.4)
+		animations = { idle = "", keen = "", mourn = "" },
 	},
 }
 
@@ -318,10 +340,10 @@ return Config
 	looked up by the client. Names are listed here so both sides agree.
 
 	Client -> server
-	  Fire(origin, direction)   Reload()   Flashlight(on)   Move(mode)
+	  Shot(origin, direction)   Reload()   Flashlight(on)   Move(mode)
 	  Aim(direction)*           Ward()     Debug(command)
 	Server -> client
-	  ShotFx(shooter, origin, hit, kind)   Caption(text, seconds, style)
+	  Caption(text, seconds, style)
 	  Note(noteId)   Objectives(list)   Chapter(title, subtitle)
 	  Keen(state, info)   Lightning(strength)   Screen(kind, text)
 	  Spectate(on)
@@ -333,13 +355,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local RELIABLE = {
-	"Fire",
+	"Shot",
 	"Reload",
 	"Flashlight",
 	"Move",
 	"Ward",
 	"Debug",
-	"ShotFx",
 	"Caption",
 	"Note",
 	"Objectives",
@@ -397,6 +418,8 @@ return Net
 	  Cornelius   catalogue cards: WHAT each object is and how it behaves
 	  First crew  voice memos: WHAT WENT WRONG (rules taught by mistakes)
 	  The dead    memos only readable while the Banshee mourns there
+
+	The full arc these seed is in docs/ASHGROVE_STORY.md.
 
 	The auction house and every name here are invented. Keep it that way:
 	no real people, brands or places' logos.
@@ -529,6 +552,17 @@ Mr Ashgrove says the bells ring by themselves now. We have stopped answering the
 - Mrs Dunne, housekeeper]],
 	},
 
+	Grave_Receipt = {
+		title = "Sexton's chit, nailed to the spade",
+		body = [[Plot 11. Dig to the usual depth and leave it open.
+
+Paid in full, in gold, in advance.
+
+Do not fill it until she stops.
+
+- C. Ashgrove]],
+	},
+
 	Vault_Ledger = {
 		title = "Cornelius Ashgrove's ledger, last entry",
 		body = [[The box is the only thing I have bought that I would sell back.
@@ -611,7 +645,7 @@ for _, name in { "Baseplate", "SpawnLocation" } do
 end
 
 if not workspace:FindFirstChild("AshgroveHouse") then
-	require(script.Greybox).build()
+	require(script.House).build()
 end
 
 require(script.Director).start()
@@ -656,6 +690,7 @@ local Crew = require(script.Parent.Crew)
 local Doors = require(script.Parent.Doors)
 local Light = require(script.Parent.Light)
 local Map = require(script.Parent.Map)
+local Models = require(script.Parent.Models)
 local Noise = require(script.Parent.Noise)
 local Reading = require(script.Parent.Reading)
 local Registry = require(script.Parent.Entities.Registry)
@@ -692,6 +727,10 @@ type Mourning = {
 }
 
 local model: Model
+local facePart: BasePart
+local chestPart: BasePart
+local anims: Models.Animations
+local kneelDrop = 2.4
 local state = "Hidden"
 local keen: Keen? = nil
 local mourning: Mourning? = nil
@@ -723,7 +762,8 @@ local function eachPart(fn: (BasePart) -> ())
 end
 
 local function show(cf: CFrame, pose: string)
-	local placed = if pose == "kneel" then cf * CFrame.new(0, -2.4, 0) * CFrame.Angles(math.rad(-14), 0, 0) else cf
+	local placed = if pose == "kneel" then cf * CFrame.new(0, -kneelDrop, 0) * CFrame.Angles(math.rad(-14), 0, 0) else cf
+	anims.loop(if pose == "kneel" then "mourn" elseif state == "Keening" or state == "Ending" then "keen" else "idle")
 	model:PivotTo(placed)
 	eachPart(function(p)
 		p.Transparency = 1
@@ -916,7 +956,7 @@ local function take()
 	if keen ~= k then
 		return
 	end
-	Audio.play("bansheeTake", model:FindFirstChild("Chest") or model.PrimaryPart, 1, 300)
+	Audio.play("bansheeTake", chestPart, 1, 300)
 	Crew.take(victim)
 	Say.all("[A scream, and then nothing]", 4, "sound")
 	resolve("taken", victim)
@@ -962,12 +1002,9 @@ function Banshee.keen(wing: string, opts: { target: Player?, forced: boolean?, a
 	show(o.at or keenSpot(wing, victimTarget), "stand")
 	Storm.silence(true)
 	stopKeenSound()
-	local chest = model:FindFirstChild("Chest")
-	if chest then
-		keenSound = Audio.loop("keen", chest, 1)
-		if keenSound then
-			keenSound.RollOffMaxDistance = 400
-		end
+	keenSound = Audio.loop("keen", chestPart, 1)
+	if keenSound then
+		keenSound.RollOffMaxDistance = 400
 	end
 	Say.all("[A keening rises. The storm goes quiet.]", 5, "sound")
 	Say.to(victimTarget, "She is facing you.", 6, "story")
@@ -1135,16 +1172,17 @@ function Banshee.ending(at: CFrame)
 	show(at, "stand")
 	Storm.silence(true)
 	stopKeenSound()
-	local chest = model:FindFirstChild("Chest")
-	if chest then
-		keenSound = Audio.loop("keen", chest, 1)
-	end
+	keenSound = Audio.loop("keen", chestPart, 1)
 end
 
 ------------------------------------------------------------------ loop
 
 function Banshee.setup()
-	model = Rigs.banshee()
+	model, facePart, chestPart = Rigs.banshee()
+	anims = Models.animations(model, "Banshee")
+	if Models.find("Banshee") then
+		kneelDrop = Config.models.Banshee.kneelDrop
+	end
 	model.Parent = ServerStorage
 
 	Registry.died:Connect(function(entity, position: Vector3)
@@ -1197,7 +1235,7 @@ function Banshee.setup()
 			end
 
 			if state == "Mourning" and mourning then
-				local face = model:FindFirstChild("Face") :: BasePart?
+				local face = facePart
 				local herPos = model:GetPivot().Position
 				local disturber: Player? = nil
 				local listening = now >= mourning.graceUntil
@@ -1333,6 +1371,136 @@ end
 
 return BellBoard
 ]=] },
+	{ service = {"ServerScriptService"}, path = {"Ashgrove", "Build"}, class = "ModuleScript", source = [=[
+--[[
+	Build: small part-making helpers shared by House (layout) and Dressing
+	(furniture and detail). Everything is anchored and smooth-surfaced.
+]]
+
+local Build = {}
+
+function Build.part(parent: Instance, name: string, size: Vector3, cf: CFrame, colour: Color3, material: Enum.Material?): Part
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Anchored = true
+	p.Size = size
+	p.CFrame = cf
+	p.Color = colour
+	p.Material = material or Enum.Material.SmoothPlastic
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	p.Parent = parent
+	return p
+end
+
+-- Axis-aligned box from two corners.
+function Build.box(parent: Instance, name: string, x1: number, x2: number, y1: number, y2: number, z1: number, z2: number, colour: Color3, material: Enum.Material?): Part
+	local size = Vector3.new(math.abs(x2 - x1), math.abs(y2 - y1), math.abs(z2 - z1))
+	local centre = Vector3.new((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2)
+	return Build.part(parent, name, size, CFrame.new(centre), colour, material)
+end
+
+-- A vertical cylinder standing on (x, y, z).
+function Build.column(parent: Instance, name: string, x: number, y: number, z: number, height: number, diameter: number, colour: Color3, material: Enum.Material?): Part
+	local p = Build.part(parent, name, Vector3.new(height, diameter, diameter), CFrame.new(x, y + height / 2, z) * CFrame.Angles(0, 0, math.rad(90)), colour, material)
+	p.Shape = Enum.PartType.Cylinder
+	return p
+end
+
+-- A cylinder between two points (branches, chains, rails).
+function Build.rod(parent: Instance, name: string, a: Vector3, b: Vector3, diameter: number, colour: Color3, material: Enum.Material?): Part
+	local length = (b - a).Magnitude
+	local dir = (b - a).Unit
+	-- lookAt can't use "up" as its up vector when the rod is vertical.
+	local upVector = if math.abs(dir.Y) > 0.99 then Vector3.xAxis else Vector3.yAxis
+	-- Cylinders run along X: aim X along a->b.
+	local cf = CFrame.lookAt((a + b) / 2, b, upVector) * CFrame.Angles(0, math.rad(90), 0)
+	local p = Build.part(parent, name, Vector3.new(length, diameter, diameter), cf, colour, material)
+	p.Shape = Enum.PartType.Cylinder
+	return p
+end
+
+-- Cosmetic only: no collisions, invisible to raycasts.
+function Build.decor(p: BasePart): BasePart
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	return p
+end
+
+function Build.invisible(p: BasePart): BasePart
+	p.Transparency = 1
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	return p
+end
+
+function Build.folder(parent: Instance, name: string): Folder
+	local existing = parent:FindFirstChild(name)
+	if existing and existing:IsA("Folder") then
+		return existing
+	end
+	local f = Instance.new("Folder")
+	f.Name = name
+	f.Parent = parent
+	return f
+end
+
+function Build.attributes(inst: Instance, attrs: { [string]: any }?)
+	if attrs then
+		for k, v in attrs do
+			inst:SetAttribute(k, v)
+		end
+	end
+end
+
+function Build.label(p: BasePart, text: string, face: Enum.NormalId, colour: Color3?, font: Enum.Font?)
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = face
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 40
+	gui.LightInfluence = 1
+	local t = Instance.new("TextLabel")
+	t.Size = UDim2.fromScale(1, 1)
+	t.BackgroundTransparency = 1
+	t.Text = text
+	t.TextScaled = true
+	t.Font = font or Enum.Font.Garamond
+	t.TextColor3 = colour or Color3.fromRGB(218, 210, 188)
+	t.Parent = gui
+	gui.Parent = p
+end
+
+export type Rng = {
+	number: (self: Rng, min: number, max: number) -> number,
+	integer: (self: Rng, min: number, max: number) -> number,
+}
+
+-- Deterministic random numbers, so the dressing comes out the same every
+-- build (nothing jumps around between edits). A small LCG, so it runs the
+-- same outside Roblox too (the offline checks).
+function Build.random(seed: number): Rng
+	local state = seed % 2147483647
+	if state <= 0 then
+		state += 2147483646
+	end
+	local function nextUnit(): number
+		state = (state * 48271) % 2147483647
+		return state / 2147483647
+	end
+	return {
+		number = function(_self, min: number, max: number): number
+			return min + (max - min) * nextUnit()
+		end,
+		integer = function(_self, min: number, max: number): number
+			return math.min(max, min + math.floor((max - min + 1) * nextUnit()))
+		end,
+	} :: any
+end
+
+return Build
+]=] },
 	{ service = {"ServerScriptService"}, path = {"Ashgrove", "Crew"}, class = "ModuleScript", source = [=[
 --[[
 	Crew: the players. Hits, going down, being revived, being taken by the
@@ -1345,8 +1513,8 @@ return BellBoard
 	Crew.wiped).
 
 	A committed action (securing an object, a rite step, a revive) roots the
-	player and blocks shooting for its length. The player can't cancel it;
-	a hit can.
+	player and puts their gun away for its length. The player can't cancel
+	it; a hit can.
 
 	Player attributes the client reads: Hits, Downed, Taken, MoveMode,
 	Flashlight, LightOn, Battery, HasGold, WardRaised, WardReadyAt,
@@ -1511,6 +1679,10 @@ local function refreshSpeed(player: Player)
 		speed = p.walkSpeed
 	end
 	humanoid.WalkSpeed = speed
+	-- Down, taken or busy: hands are full, so your gun is put away.
+	if s.downed or s.taken or s.commit then
+		humanoid:UnequipTools()
+	end
 	humanoid.UseJumpPower = true
 	humanoid.JumpPower = if s.downed or s.commit or s.taken then 0 else p.jumpPower
 	humanoid.HipHeight = if s.downed then math.max(0.2, s.hipHeight - 1.2) else s.hipHeight
@@ -1901,6 +2073,14 @@ local function onCharacter(player: Player, character: Model)
 	refreshSpeed(player)
 	updateLight(player)
 
+	character.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") and (s.downed or s.taken or s.commit) then
+			task.defer(function()
+				humanoid:UnequipTools()
+			end)
+		end
+	end)
+
 	task.spawn(function()
 		if not character.Parent then
 			character.AncestryChanged:Wait()
@@ -2076,13 +2256,14 @@ local Banshee = require(Ashgrove.Banshee)
 local BellBoard = require(Ashgrove.BellBoard)
 local Crew = require(Ashgrove.Crew)
 local Doors = require(Ashgrove.Doors)
-local Gun = require(Ashgrove.Gun)
 local Map = require(Ashgrove.Map)
+local Models = require(Ashgrove.Models)
 local Pickups = require(Ashgrove.Pickups)
 local Reading = require(Ashgrove.Reading)
 local Retrieval = require(Ashgrove.Retrieval)
 local Rites = require(Ashgrove.Rites)
 local Say = require(Ashgrove.Say)
+local Shots = require(Ashgrove.Shots)
 local Storm = require(Ashgrove.Storm)
 local Entity = require(Ashgrove.Entities.Entity)
 local Registry = require(Ashgrove.Entities.Registry)
@@ -2131,7 +2312,6 @@ end
 
 local function setCheckpoint(name: string)
 	checkpointName = name
-	Gun.saveAll()
 end
 
 local function card(title: string, subtitle: string)
@@ -2150,7 +2330,7 @@ local function chapterOne()
 		{ text = "Find the first crew's camp in the hall" },
 	})
 	task.delay(4, function()
-		Say.all("WASD move, Shift sprint, C crouch, F torch, Click shoot, R reload, E interact. H for help.", 10, "hint")
+		Say.all("Shift sprint, C crouch, F torch, G raise gold, E interact, H help.", 10, "hint")
 	end)
 end
 
@@ -2215,7 +2395,19 @@ local function ending()
 	Say.all("You're out in the rain, and she's still keening.", 5, "story")
 	task.wait(5)
 	Say.all("It wasn't about you.", 5, "story")
-	task.wait(5)
+	task.wait(4)
+	-- The first crew's dead van, behind you.
+	local lights = Map.root():FindFirstChild("CrewOneHeadlights", true)
+	local beam = lights and lights:FindFirstChildOfClass("SpotLight")
+	if lights and beam and lights:IsA("BasePart") then
+		lights.Material = Enum.Material.Neon
+		beam.Enabled = true
+		Say.all("[Behind you, the first crew's van flashes its headlights once]", 4, "sound")
+		task.wait(0.6)
+		beam.Enabled = false
+		lights.Material = Enum.Material.Glass
+	end
+	task.wait(4)
 	Net.event("Screen"):FireAllClients("end", "END OF STORY 1\n\nThe box was empty.\nSomebody is wearing what was in it.")
 end
 
@@ -2338,7 +2530,6 @@ local function onWipe()
 	end
 	Doors.clearLockouts()
 	Crew.resetAll(Map.marker(checkpointName).CFrame)
-	Gun.restoreAll()
 	if flags.ruleBreak and not flags.finale then
 		-- The vault keen is lost with the wipe; go straight to the escape.
 		flags.finale = true
@@ -2371,9 +2562,8 @@ local function onDebug(player: Player, command: any)
 			Say.to(player, "[debug] can't keen here (hall, van and grounds never keen)", 3, "hint")
 		end
 	elseif command == "refill" then
-		Gun.refill(player)
 		Crew.addBattery(player, Config.flashlight.maxBattery)
-		Say.to(player, "[debug] refilled", 2, "hint")
+		Say.to(player, "[debug] torch refilled", 2, "hint")
 	end
 end
 
@@ -2393,7 +2583,8 @@ function Director.start()
 	Crew.spawnCFrame = function()
 		return Map.marker(checkpointName).CFrame
 	end
-	Gun.start()
+	Models.collect()
+	Shots.start()
 	Crew.start()
 	Pickups.setup()
 
@@ -2547,6 +2738,724 @@ end
 
 return Doors
 ]=] },
+	{ service = {"ServerScriptService"}, path = {"Ashgrove", "Dressing"}, class = "ModuleScript", source = [=[
+--[[
+	Dressing: everything that makes the layout look like Ashgrove House.
+	Panelled rooms get furniture, the collection gets its cases and crates,
+	the house gets an upper storey, roofs with crow-stepped gables and
+	chimneys, and the grounds get the drive, the dead trees, the family
+	plot, the cliff and a lighthouse out at sea.
+
+	Nothing here is read by the gameplay. Move it, delete it, or replace it
+	with the art brief's AH_Prop_* / AH_Kit_* models freely. After big
+	changes run tools/check_greybox.luau: it fails if something solid now
+	blocks a route, a marker or a pickup.
+
+	Rules this file keeps (so the game still plays):
+	  - nothing solid in doorways, on walking routes or on markers
+	  - the gallery's sight line (x -8..99 at z -19, eye height) stays open
+	  - decorative lights only where no entity cares about light (the
+	    hall, the gallery, outside). Gameplay light is Interact/Lamps.
+	  - lights with a Flicker attribute ("bulb" | "window") are animated at
+	    runtime by Storm; a part with Spin = true is turned (the
+	    lighthouse beam)
+]]
+
+local Build = require(script.Parent.Build)
+
+local part, box, column, rod, decor = Build.part, Build.box, Build.column, Build.rod, Build.decor
+
+local Dressing = {}
+
+local C = {
+	oak = Color3.fromRGB(70, 50, 36),
+	oakDark = Color3.fromRGB(48, 34, 26),
+	walnut = Color3.fromRGB(60, 40, 30),
+	sheet = Color3.fromRGB(194, 188, 174),
+	sheetGrey = Color3.fromRGB(150, 146, 136),
+	brass = Color3.fromRGB(150, 118, 60),
+	iron = Color3.fromRGB(40, 40, 44),
+	glass = Color3.fromRGB(110, 128, 146),
+	stone = Color3.fromRGB(96, 95, 90),
+	stoneDark = Color3.fromRGB(70, 70, 68),
+	limestone = Color3.fromRGB(150, 148, 138),
+	marbleWhite = Color3.fromRGB(196, 192, 182),
+	marbleBlack = Color3.fromRGB(34, 34, 36),
+	rugRed = Color3.fromRGB(92, 30, 28),
+	rugGreen = Color3.fromRGB(34, 52, 40),
+	rugGold = Color3.fromRGB(140, 104, 48),
+	fabricBrown = Color3.fromRGB(86, 60, 44),
+	fabricGreen = Color3.fromRGB(44, 62, 50),
+	crate = Color3.fromRGB(108, 84, 56),
+	canvas = Color3.fromRGB(44, 38, 32),
+	paper = Color3.fromRGB(218, 210, 188),
+	black = Color3.fromRGB(14, 14, 16),
+	wax = Color3.fromRGB(220, 210, 180),
+	stain = Color3.fromRGB(20, 18, 14),
+	web = Color3.fromRGB(220, 220, 214),
+	roof = Color3.fromRGB(50, 52, 58),
+	bark = Color3.fromRGB(44, 36, 30),
+	hedge = Color3.fromRGB(30, 44, 28),
+	earth = Color3.fromRGB(46, 36, 28),
+	lamp = Color3.fromRGB(255, 214, 160),
+	white = Color3.fromRGB(214, 214, 206),
+	red = Color3.fromRGB(140, 40, 34),
+}
+
+local M = Enum.Material
+
+------------------------------------------------------------------ helpers
+
+-- A frame on the floor at (x, z) turned `yaw` degrees. Furniture faces -Z
+-- of this frame (a chair's seat faces -Z, its back is at +Z).
+local function at(x: number, z: number, yaw: number?, y: number?): CFrame
+	return CFrame.new(x, y or 0, z) * CFrame.Angles(0, math.rad(yaw or 0), 0)
+end
+
+local function piece(f: Instance, name: string, size: Vector3, cf: CFrame, colour: Color3, material: Enum.Material?, cosmetic: boolean?): Part
+	local p = part(f, name, size, cf, colour, material)
+	if cosmetic then
+		decor(p)
+	end
+	return p
+end
+
+-- Flat things on the floor (rugs, stains): cosmetic, a hair above it.
+local function floorPatch(f: Instance, name: string, x1: number, x2: number, z1: number, z2: number, y: number, colour: Color3, material: Enum.Material, transparency: number?)
+	local p = decor(box(f, name, x1, x2, y + 0.02, y + 0.07, z1, z2, colour, material))
+	p.Transparency = transparency or 0
+	return p
+end
+
+local function rug(f: Instance, x1: number, x2: number, z1: number, z2: number, y: number, colour: Color3, border: Color3)
+	floorPatch(f, "RugBorder", x1, x2, z1, z2, y, border, M.Fabric)
+	decor(box(f, "Rug", x1 + 0.8, x2 - 0.8, y + 0.07, y + 0.1, z1 + 0.8, z2 - 0.8, colour, M.Fabric))
+end
+
+local function chair(f: Instance, cf: CFrame, colour: Color3)
+	piece(f, "ChairSeat", Vector3.new(1.6, 0.25, 1.6), cf * CFrame.new(0, 1.7, 0), colour, M.Wood)
+	for _, sx in { -0.65, 0.65 } do
+		for _, sz in { -0.65, 0.65 } do
+			piece(f, "ChairLeg", Vector3.new(0.2, 1.6, 0.2), cf * CFrame.new(sx, 0.8, sz), colour, M.Wood)
+		end
+	end
+	piece(f, "ChairBack", Vector3.new(1.6, 2.2, 0.2), cf * CFrame.new(0, 2.95, 0.7), colour, M.Wood)
+end
+
+local function armchair(f: Instance, cf: CFrame, colour: Color3, sheeted: boolean?)
+	local c = if sheeted then C.sheet else colour
+	local m = M.Fabric
+	piece(f, "ArmchairBase", Vector3.new(3, 1.6, 2.8), cf * CFrame.new(0, 0.8, 0), c, m)
+	piece(f, "ArmchairBack", Vector3.new(3, 2.6, 0.6), cf * CFrame.new(0, 2.6, 1.1), c, m)
+	piece(f, "ArmchairArm", Vector3.new(0.5, 1, 2.8), cf * CFrame.new(-1.25, 2.1, 0), c, m)
+	piece(f, "ArmchairArm", Vector3.new(0.5, 1, 2.8), cf * CFrame.new(1.25, 2.1, 0), c, m)
+end
+
+local function bookcase(f: Instance, cf: CFrame, w: number, h: number, rng: Build.Rng)
+	piece(f, "BookcaseBack", Vector3.new(w, h, 0.2), cf * CFrame.new(0, h / 2, 0.6), C.walnut, M.Wood)
+	piece(f, "BookcaseSide", Vector3.new(0.25, h, 1.4), cf * CFrame.new(-w / 2 + 0.125, h / 2, 0), C.walnut, M.Wood)
+	piece(f, "BookcaseSide", Vector3.new(0.25, h, 1.4), cf * CFrame.new(w / 2 - 0.125, h / 2, 0), C.walnut, M.Wood)
+	local shelves = math.max(2, math.floor(h / 1.6))
+	for i = 0, shelves do
+		local y = 0.1 + i * (h - 0.2) / shelves
+		piece(f, "Shelf", Vector3.new(w - 0.5, 0.15, 1.3), cf * CFrame.new(0, y, 0), C.walnut, M.Wood)
+		if i < shelves then
+			local x = -w / 2 + 0.4
+			while x < w / 2 - 0.6 do
+				local bw = rng:number(0.18, 0.4)
+				local bh = rng:number(0.8, 1.3)
+				if rng:number(0, 1) > 0.12 then
+					local colour = Color3.fromHSV(rng:number(0, 1), rng:number(0.2, 0.6), rng:number(0.15, 0.4))
+					piece(f, "Book", Vector3.new(bw, bh, 1), cf * CFrame.new(x + bw / 2, y + 0.075 + bh / 2, 0.05), colour, M.SmoothPlastic, true)
+				end
+				x += bw + 0.02
+			end
+		end
+	end
+end
+
+local function wardrobe(f: Instance, cf: CFrame)
+	piece(f, "Wardrobe", Vector3.new(3.6, 7.5, 1.8), cf * CFrame.new(0, 3.75, 0), C.walnut, M.Wood)
+	piece(f, "WardrobeCornice", Vector3.new(4, 0.4, 2.1), cf * CFrame.new(0, 7.7, 0), C.oakDark, M.Wood)
+	piece(f, "WardrobeHandle", Vector3.new(0.1, 0.6, 0.1), cf * CFrame.new(-0.2, 3.8, -0.95), C.brass, M.Metal, true)
+	piece(f, "WardrobeHandle", Vector3.new(0.1, 0.6, 0.1), cf * CFrame.new(0.2, 3.8, -0.95), C.brass, M.Metal, true)
+end
+
+local function bed(f: Instance, cf: CFrame, w: number, l: number, blanket: Color3)
+	piece(f, "BedFrame", Vector3.new(w, 1.2, l), cf * CFrame.new(0, 0.6, 0), C.oakDark, M.Wood)
+	piece(f, "Mattress", Vector3.new(w - 0.3, 0.6, l - 0.3), cf * CFrame.new(0, 1.5, 0), C.sheet, M.Fabric)
+	piece(f, "Blanket", Vector3.new(w - 0.1, 0.25, l * 0.6), cf * CFrame.new(0, 1.85, -l * 0.18), blanket, M.Fabric, true)
+	piece(f, "Pillow", Vector3.new(w - 1, 0.4, 1), cf * CFrame.new(0, 1.95, l / 2 - 0.8), C.sheet, M.Fabric, true)
+	piece(f, "Headboard", Vector3.new(w, 3.2, 0.3), cf * CFrame.new(0, 1.6, l / 2 - 0.15), C.oakDark, M.Wood)
+end
+
+-- A dust-sheeted lump: something under a sheet, lumpy on top.
+local function sheeted(f: Instance, cf: CFrame, size: Vector3, rng: Build.Rng)
+	piece(f, "DustSheet", size, cf * CFrame.new(0, size.Y / 2, 0), C.sheet, M.Fabric)
+	piece(f, "DustSheetLump", Vector3.new(size.X * rng:number(0.4, 0.7), 0.6, size.Z * rng:number(0.4, 0.7)), cf * CFrame.new(rng:number(-0.3, 0.3), size.Y + 0.25, rng:number(-0.3, 0.3)), C.sheet, M.Fabric, true)
+	piece(f, "DustSheetHem", Vector3.new(size.X + 0.3, 0.3, size.Z + 0.3), cf * CFrame.new(0, 0.15, 0), C.sheetGrey, M.Fabric, true)
+end
+
+local function crateStack(f: Instance, x: number, z: number, y: number, count: number, rng: Build.Rng)
+	local height = y
+	for i = 1, count do
+		local s = rng:number(2.4, 3.6)
+		local yaw = rng:number(-12, 12)
+		local c = piece(f, "Crate", Vector3.new(s, s * 0.8, s), at(x + rng:number(-0.3, 0.3), z + rng:number(-0.3, 0.3), yaw, height + s * 0.4), C.crate, M.WoodPlanks)
+		if i == 1 then
+			Build.label(piece(f, "CrateStencil", Vector3.new(s * 0.7, s * 0.35, 0.05), c.CFrame * CFrame.new(0, 0, -s / 2 - 0.03), C.crate, M.WoodPlanks, true), `LOT {rng:integer(120, 480)}`, Enum.NormalId.Front, C.black, Enum.Font.Arcade)
+		end
+		height += s * 0.8
+	end
+end
+
+local function chandelier(f: Instance, x: number, ceiling: number, z: number, drop: number, radius: number)
+	local y = ceiling - drop
+	decor(rod(f, "ChandelierChain", Vector3.new(x, ceiling, z), Vector3.new(x, y + 0.5, z), 0.15, C.iron, M.Metal))
+	piece(f, "ChandelierHub", Vector3.new(0.8, 1.4, 0.8), CFrame.new(x, y, z), C.brass, M.Metal, true)
+	for i = 0, 7 do
+		local a = i / 8 * math.pi * 2
+		local tip = Vector3.new(x + math.cos(a) * radius, y + 0.4, z + math.sin(a) * radius)
+		decor(rod(f, "ChandelierArm", Vector3.new(x, y - 0.3, z), tip, 0.12, C.brass, M.Metal))
+		piece(f, "CandleStub", Vector3.new(0.2, 0.5, 0.2), CFrame.new(tip + Vector3.new(0, 0.3, 0)), C.wax, M.SmoothPlastic, true)
+	end
+end
+
+-- A framed painting hung on a wall face. `axis` is the wall's axis ("X":
+-- the wall runs along X, its face at z = `face`); `side` is the way the
+-- face looks (+1 towards +Z / +X).
+local function painting(f: Instance, axis: string, face: number, side: number, along: number, yMid: number, w: number, h: number, canvas: Color3, title: string?)
+	local function plate(name: string, a1: number, a2: number, y1: number, y2: number, out1: number, out2: number, colour: Color3, material: Enum.Material): Part
+		local d1, d2 = face + side * out1, face + side * out2
+		if d1 > d2 then
+			d1, d2 = d2, d1
+		end
+		if axis == "X" then
+			return decor(box(f, name, a1, a2, y1, y2, d1, d2, colour, material)) :: Part
+		end
+		return decor(box(f, name, d1, d2, y1, y2, a1, a2, colour, material)) :: Part
+	end
+	plate("PaintingFrame", along - w / 2, along + w / 2, yMid - h / 2, yMid + h / 2, 0, 0.2, C.brass, M.Wood)
+	plate("PaintingCanvas", along - w / 2 + 0.35, along + w / 2 - 0.35, yMid - h / 2 + 0.35, yMid + h / 2 - 0.35, 0.2, 0.25, canvas, M.Fabric)
+	if title then
+		local plateY = yMid - h / 2 - 0.45
+		local brass = plate("PaintingPlate", along - 1.2, along + 1.2, plateY - 0.25, plateY + 0.25, 0, 0.2, C.brass, M.Metal)
+		local faceId = if axis == "X" then (if side > 0 then Enum.NormalId.Back else Enum.NormalId.Front) else (if side > 0 then Enum.NormalId.Right else Enum.NormalId.Left)
+		Build.label(brass, title, faceId, C.black)
+	end
+end
+
+local function cobweb(f: Instance, position: Vector3, yaw: number)
+	local p = piece(f, "Cobweb", Vector3.new(3, 3, 0.05), CFrame.new(position) * CFrame.Angles(0, math.rad(yaw), 0) * CFrame.Angles(0, 0, math.rad(45)), C.web, M.SmoothPlastic, true)
+	p.Transparency = 0.82
+end
+
+local function candle(f: Instance, position: Vector3, lit: boolean)
+	piece(f, "Candle", Vector3.new(0.25, 0.8, 0.25), CFrame.new(position + Vector3.new(0, 0.4, 0)), C.wax, M.SmoothPlastic, true)
+	if lit then
+		local flame = piece(f, "Flame", Vector3.new(0.12, 0.25, 0.12), CFrame.new(position + Vector3.new(0, 0.95, 0)), C.lamp, M.Neon, true)
+		local light = Instance.new("PointLight")
+		light.Range = 8
+		light.Brightness = 0.6
+		light.Color = C.lamp
+		light:SetAttribute("Flicker", "bulb")
+		light.Parent = flame
+	end
+end
+
+local function sconce(f: Instance, axis: string, face: number, side: number, along: number, y: number, live: boolean?)
+	local n = face + side * 0.3
+	local x, z = if axis == "X" then along else n, if axis == "X" then n else along
+	piece(f, "Sconce", Vector3.new(0.5, 0.9, 0.5), CFrame.new(x, y, z), C.brass, M.Metal, true)
+	local shade = piece(f, "SconceShade", Vector3.new(0.7, 0.6, 0.7), CFrame.new(x, y + 0.75, z), if live then C.lamp else C.sheetGrey, if live then M.Neon else M.Glass, true)
+	if live then
+		local light = Instance.new("PointLight")
+		light.Range = 14
+		light.Brightness = 0.7
+		light.Color = C.lamp
+		light.Shadows = true
+		light:SetAttribute("Flicker", "bulb")
+		light.Parent = shade
+	end
+end
+
+local function displayCase(f: Instance, cf: CFrame, lot: string, rng: Build.Rng)
+	piece(f, "CaseBase", Vector3.new(3, 3, 4), cf * CFrame.new(0, 1.5, 0), C.walnut, M.Wood)
+	local glass = piece(f, "CaseGlass", Vector3.new(3, 2.6, 4), cf * CFrame.new(0, 4.3, 0), C.glass, M.Glass)
+	glass.Transparency = 0.75
+	piece(f, "CaseTop", Vector3.new(3.2, 0.2, 4.2), cf * CFrame.new(0, 5.7, 0), C.walnut, M.Wood)
+	piece(f, "CaseCushion", Vector3.new(2, 0.3, 2.6), cf * CFrame.new(0, 3.15, 0), C.rugRed, M.Fabric, true)
+	local shapes = { Enum.PartType.Ball, Enum.PartType.Block, Enum.PartType.Cylinder }
+	local relic = piece(f, "Relic", Vector3.new(0.8, 0.8, 0.8), cf * CFrame.new(0, 3.75, 0) * CFrame.Angles(0, rng:number(0, 6.28), 0), Color3.fromHSV(rng:number(0, 1), 0.2, rng:number(0.3, 0.6)), M.Metal, true)
+	relic.Shape = shapes[rng:integer(1, #shapes)]
+	local plate = piece(f, "CaseLabel", Vector3.new(1.8, 0.5, 0.05), cf * CFrame.new(0, 2.2, -2.03), C.paper, M.SmoothPlastic, true)
+	Build.label(plate, lot, Enum.NormalId.Front, C.black)
+end
+
+local function barrel(f: Instance, x: number, y: number, z: number)
+	column(f, "Barrel", x, y, z, 3, 2.2, C.oak, M.WoodPlanks)
+	column(f, "BarrelHoop", x, y + 0.5, z, 0.2, 2.3, C.iron, M.Metal)
+	decor(column(f, "BarrelHoop", x, y + 2.3, z, 0.2, 2.3, C.iron, M.Metal))
+end
+
+------------------------------------------------------------------ hall
+
+local function hall(f: Instance, rng: Build.Rng)
+	-- Chequered marble over the boards.
+	for i = 0, 9 do
+		for j = 0, 11 do
+			local colour = if (i + j) % 2 == 0 then C.marbleWhite else C.marbleBlack
+			floorPatch(f, "FloorTile", -60 + i * 5, -55 + i * 5, -30 + j * 5, -25 + j * 5, 0, colour, M.Marble)
+		end
+	end
+	rug(f, -47, -25, -3, 9, 0.05, C.rugRed, C.rugGold)
+
+	-- The cold fireplace and Cornelius over it.
+	box(f, "Hearth", -40, -30, 0, 0.3, -29.5, -27, C.marbleWhite, M.Marble)
+	box(f, "FireplaceJamb", -40, -38.5, 0, 7, -29.5, -28, C.marbleWhite, M.Marble)
+	box(f, "FireplaceJamb", -31.5, -30, 0, 7, -29.5, -28, C.marbleWhite, M.Marble)
+	box(f, "Mantel", -41, -29, 7, 7.8, -29.5, -27.6, C.marbleWhite, M.Marble)
+	decor(box(f, "Firebox", -38.5, -31.5, 0.3, 5.5, -29.5, -29.3, C.black, M.Slate))
+	decor(box(f, "Ash", -37.5, -32.5, 0.3, 0.6, -29.2, -28.2, C.stoneDark, M.Sand))
+	painting(f, "X", -29.5, 1, -35, 13, 7, 8, C.canvas, "CORNELIUS ASHGROVE")
+	for _, cx in { -39.5, -30.5 } do
+		candle(f, Vector3.new(cx, 7.8, -28.4), false)
+	end
+
+	chandelier(f, -35, 24, 3, 6, 3.5)
+
+	-- The collection's cases along the west wall.
+	-- Turned -90 so their labels face into the room (+X).
+	displayCase(f, at(-56.5, 8, -90), "LOT 044", rng)
+	displayCase(f, at(-56.5, 13.5, -90), "LOT 061", rng)
+	displayCase(f, at(-56.5, -10, -90), "LOT 090", rng)
+	sheeted(f, at(-55.5, -23.5, 0), Vector3.new(5, 4, 4.5), rng) -- the piano
+
+	-- The first crew's things.
+	piece(f, "Duffel", Vector3.new(2.4, 1.1, 1.2), at(-46, -2, 20, 0.55), C.fabricGreen, M.Fabric)
+	piece(f, "Duffel", Vector3.new(2.2, 1, 1.1), at(-47.5, -3.4, -15, 0.5), C.black, M.Fabric)
+	decor(rod(f, "Cable", Vector3.new(-28, 0.1, -10.5), Vector3.new(-32, 0.1, -4), 0.15, C.black, M.Rubber))
+	decor(rod(f, "Cable", Vector3.new(-30, 0.1, -9), Vector3.new(-40, 0.1, -7), 0.12, C.black, M.Rubber))
+	chair(f, at(-40, -11, 180), C.oakDark)
+
+	-- The way in.
+	column(f, "CoatStand", -57.5, 0, -5, 6.5, 0.35, C.oakDark, M.Wood)
+	piece(f, "Coat", Vector3.new(1.2, 3, 0.6), at(-57.5, -5.5, 0, 4.6), C.fabricBrown, M.Fabric, true)
+	box(f, "GrandfatherClock", -14, -12, 0, 7.5, -29.4, -28, C.walnut, M.Wood)
+	decor(box(f, "ClockFace", -13.7, -12.3, 5.6, 6.9, -28, -27.95, C.paper, M.SmoothPlastic))
+
+	-- The stair's banister.
+	decor(rod(f, "Banister", Vector3.new(-56.2, 4, 21.7), Vector3.new(-38.6, 15, 21.7), 0.3, C.oakDark, M.Wood))
+	for i = 0, 11, 2 do
+		decor(rod(f, "Baluster", Vector3.new(-56.2 + i * 1.6, 1 + i, 21.7), Vector3.new(-56.2 + i * 1.6, 4 + i * (11 / 17.6) * 1.6, 21.7), 0.18, C.oakDark, M.Wood))
+	end
+	crateStack(f, -14, 24, 0, 3, rng)
+	crateStack(f, -24, 27, 0, 1, rng)
+
+	-- Ceiling beams.
+	for x = -55, -15, 10 do
+		decor(box(f, "Beam", x - 0.6, x + 0.6, 22.8, 24, -30, 30, C.oakDark, M.Wood))
+	end
+	for _, corner in { Vector3.new(-58.5, 22.5, -28.5), Vector3.new(-11.5, 22.5, 28.5), Vector3.new(-58.5, 22.5, 28.5) } do
+		cobweb(f, corner, 45)
+	end
+end
+
+------------------------------------------------------------------ gallery
+
+local function gallery(f: Instance, rng: Build.Rng)
+	rug(f, -8, 98, -21, -17, 0, C.rugGreen, C.rugGold)
+	for _, cx in { 20, 50, 80 } do
+		chandelier(f, cx, 20, -19, 5, 3)
+	end
+	for x = -4, 104, 12 do
+		decor(box(f, "Beam", x - 0.5, x + 0.5, 19, 20, -30, -8, C.oakDark, M.Wood))
+	end
+	-- Sconces between the portraits; only the first still works, just.
+	for i = 0, 8 do
+		sconce(f, "X", -8.5, -1, 8 + i * 12, 10, i == 0)
+	end
+	-- A second row, smaller, above the portraits.
+	for i, x in { 2, 26, 50, 74, 98 } do
+		painting(f, "X", -8.5, -1, x, 15.5, 4, 3.4, Color3.fromHSV(rng:number(0, 1), 0.3, 0.22), if i == 3 then "LOT 114 PROVENANCE" else nil)
+	end
+	armchair(f, at(30, -27.6, 180), C.fabricGreen, true)
+	armchair(f, at(84, -27.6, 180), C.fabricGreen, true)
+	floorPatch(f, "WaterStain", 92, 98, -29.5, -26.5, 0, C.stain, M.Slate, 0.45)
+	decor(box(f, "TackCasePlate", 103, 105, 2, 2.6, -22.05, -22, C.brass, M.Metal))
+	for _, corner in { Vector3.new(-8.5, 18.5, -28.5), Vector3.new(108.5, 18.5, -9.5) } do
+		cobweb(f, corner, -45)
+	end
+end
+
+------------------------------------------------------------------ servants' wing
+
+local function servants(f: Instance, rng: Build.Rng)
+	-- Corridor: coats on hooks, dead oil lamps.
+	for i = 0, 3 do
+		local x = 14 + i * 1.6
+		piece(f, "Hook", Vector3.new(0.2, 0.2, 0.5), CFrame.new(x, 8.2, 8.75), C.iron, M.Metal, true)
+		piece(f, "Coat", Vector3.new(1.2, 3.2, 0.5), CFrame.new(x, 6.4, 9), if i % 2 == 0 then C.fabricBrown else C.black, M.Fabric, true)
+	end
+	for x = 25, 105, 20 do
+		sconce(f, "X", 8.5, 1, x, 8, false)
+	end
+	column(f, "Bucket", 108.4, 0, 9.2, 1.4, 1.2, C.iron, M.Metal)
+
+	-- Kitchen.
+	for _, x in { 2, 8, 14, 19 } do
+		chair(f, at(x, 17.6, 180), C.oakDark)
+	end
+	for _, x in { 0, 4 } do
+		chair(f, at(x, 24.4, 0), C.oakDark)
+	end
+	box(f, "Dresser", -9.5, -8, 0, 3.5, 15, 18.5, C.walnut, M.Wood)
+	box(f, "DresserRack", -9.5, -8.8, 3.5, 8, 15, 18.5, C.walnut, M.Wood)
+	for row = 0, 1 do
+		for i = 0, 3 do
+			local plate = decor(part(f, "Plate", Vector3.new(0.1, 0.8, 0.8), CFrame.new(-8.7, 4.6 + row * 1.6, 15.6 + i * 0.85), C.white, M.SmoothPlastic))
+			plate.Shape = Enum.PartType.Cylinder
+		end
+	end
+	decor(box(f, "PotRack", 1, 19, 10.6, 10.8, 20.6, 21.4, C.iron, M.Metal))
+	for x = 3, 17, 3.5 do
+		decor(rod(f, "PotHook", Vector3.new(x, 10.6, 21), Vector3.new(x, 9.6, 21), 0.08, C.iron, M.Metal))
+		decor(box(f, "Pot", x - 0.45, x + 0.45, 8.9, 9.6, 20.55, 21.45, C.stoneDark, M.Metal))
+	end
+	box(f, "Sink", 17, 23, 0, 3, 28.6, 29.5, C.stone, M.Slate)
+	column(f, "StovePipe", -6, 5, 28.5, 7, 0.9, C.iron, M.Metal)
+	for _, p in { Vector3.new(-7.5, 5, 26), Vector3.new(-4.5, 5, 27.5) } do
+		column(f, "Pan", p.X, p.Y, p.Z, 0.6, 1.4, C.stoneDark, M.Metal)
+	end
+	piece(f, "Sack", Vector3.new(1.6, 2.2, 1.4), at(27.5, 16.2, 10, 1.1), C.fabricBrown, M.Fabric)
+	piece(f, "Sack", Vector3.new(1.5, 1.9, 1.3), at(26.6, 27.6, -20, 0.95), C.fabricBrown, M.Fabric)
+	barrel(f, 28, 0, 22)
+
+	-- Scullery.
+	piece(f, "Mangle", Vector3.new(2.5, 3.5, 2.2), at(40.2, 21.2), C.iron, M.Metal)
+	decor(rod(f, "MangleRoller", Vector3.new(39, 3.3, 21.2), Vector3.new(41.4, 3.3, 21.2), 0.6, C.oak, M.Wood))
+	column(f, "Bucket", 31, 0, 15, 1.4, 1.2, C.iron, M.Metal)
+	decor(rod(f, "DryingLine", Vector3.new(32, 9.5, 20.6), Vector3.new(44, 9.5, 20.6), 0.08, C.black, M.Fabric))
+	for x = 33, 42, 3 do
+		decor(box(f, "HungSheet", x, x + 2.4, 6.4, 9.4, 20.5, 20.7, C.sheetGrey, M.Fabric))
+	end
+	floorPatch(f, "DrainStain", 46.5, 50.5, 16.5, 19, 0, C.stain, M.Slate, 0.5)
+	box(f, "SculleryShelf", 56.5, 59.5, 6, 6.3, 20, 23, C.oak, M.Wood)
+	for i = 0, 3 do
+		column(f, "Jar", 57.2 + (i % 2) * 1.4, 6.3, 20.7 + math.floor(i / 2) * 1.4, 1, 0.8, C.glass, M.Glass)
+	end
+
+	-- Housekeeper's room.
+	rug(f, 64, 80, 20, 27, 0, C.rugRed, C.rugGold)
+	bookcase(f, at(61.4, 23.8, -90), 5.2, 8, rng)
+	chair(f, at(65, 20.4, 0), C.walnut)
+	armchair(f, at(70, 25.5, 200), C.fabricGreen)
+	bed(f, at(79.6, 16.8, 90), 3.6, 7, C.rugRed)
+	decor(box(f, "KeyBoard", 64, 67.5, 5, 7.2, 14.5, 14.7, C.oak, M.Wood))
+	for i = 0, 5 do
+		decor(box(f, "Key", 64.4 + i * 0.55, 64.6 + i * 0.55, 5.5, 6.3, 14.7, 14.8, C.brass, M.Metal))
+	end
+	painting(f, "X", 14.5, 1, 78.5, 7.5, 3.2, 4, C.canvas, "MRS DUNNE")
+	candle(f, Vector3.new(66.8, 3, 16.6), false)
+
+	-- Servants' hall.
+	for _, x in { 90, 97, 104 } do
+		piece(f, "Blanket", Vector3.new(4.1, 0.25, 3.4), CFrame.new(x, 2.12, 25.5), C.fabricBrown, M.Fabric, true)
+		piece(f, "Pillow", Vector3.new(2.8, 0.4, 1), CFrame.new(x, 2.2, 28.6), C.sheet, M.Fabric, true)
+	end
+	for _, x in { 90, 104 } do
+		box(f, "Footlocker", x - 1.3, x + 1.3, 0, 1.6, 22, 23.4, C.oak, M.Wood)
+	end
+	wardrobe(f, at(86.9, 15.8, 180))
+	box(f, "Washstand", 107.5, 109.5, 0, 3, 15, 17, C.walnut, M.Wood)
+	column(f, "Basin", 108.5, 3, 16, 0.4, 1.4, C.white, M.Marble)
+	decor(rod(f, "ClothesLine", Vector3.new(86, 9.5, 21), Vector3.new(109, 9.5, 21), 0.06, C.black, M.Fabric))
+	for x = 88, 106, 4.5 do
+		decor(box(f, "HungShirt", x, x + 1.4, 7.6, 9.4, 20.9, 21.1, C.sheetGrey, M.Fabric))
+	end
+	cobweb(f, Vector3.new(109, 11, 29), 45)
+	cobweb(f, Vector3.new(-9, 11, 29), -45)
+end
+
+------------------------------------------------------------------ vault
+
+local function vault(f: Instance, rng: Build.Rng)
+	for _, p in { Vector3.new(35, 0, 5), Vector3.new(35, 0, 18), Vector3.new(70, 0, 15) } do
+		box(f, "VaultPillar", p.X - 1, p.X + 1, -16, -1, p.Z - 1, p.Z + 1, Color3.fromRGB(96, 66, 54), M.Brick)
+	end
+	box(f, "WineRack", 78, 79.5, -16, -8, -2, 20, C.walnut, M.Wood)
+	for row = 0, 4 do
+		for i = 0, 9 do
+			local bottle = decor(part(f, "BottleEnd", Vector3.new(0.3, 0.6, 0.6), CFrame.new(77.9, -15 + row * 1.5, -0.8 + i * 2.1), Color3.fromRGB(30, 46, 30), M.Glass))
+			bottle.Shape = Enum.PartType.Cylinder
+		end
+	end
+	crateStack(f, 45, -2, -16, 2, rng)
+	crateStack(f, 28, 8, -16, 1, rng)
+	crateStack(f, 66, 22, -16, 2, rng)
+	box(f, "Trunk", 48, 51.5, -16, -13.8, -19.5, -17.5, C.oakDark, M.Wood)
+	box(f, "Trunk", 53, 56, -16, -14.2, -19.5, -17.8, C.walnut, M.Wood)
+	for i = 0, 3 do
+		decor(rod(f, "Chain", Vector3.new(56 + i * 0.6, -15.9, -12), Vector3.new(57 + i * 0.4, -15.9, -4.5), 0.2, C.iron, M.Metal))
+	end
+	for i = 0, 2 do
+		candle(f, Vector3.new(58.4 + i * 1.6, -13, -6.4), false)
+	end
+	for _, cx in { 30, 42, 66, 76 } do
+		floorPatch(f, "Straw", cx - 1.6, cx + 1.6, -15.6, -12.4, -16, Color3.fromRGB(150, 128, 70), M.Fabric, 0.2)
+	end
+	cobweb(f, Vector3.new(21, -2.5, -19), 45)
+	cobweb(f, Vector3.new(79, -2.5, 29), 45)
+end
+
+------------------------------------------------------------------ exterior
+
+-- One slope of a pitched roof. `axis` is the ridge's direction.
+local function roofSlope(f: Instance, axis: string, ridgeFrom: number, ridgeTo: number, eaveAt: number, ridgeAt: number, eaveY: number, pitch: number)
+	local run = math.abs(ridgeAt - eaveAt)
+	local rise = run * math.tan(pitch)
+	local length = run / math.cos(pitch) + 1.5
+	local mid = (eaveAt + ridgeAt) / 2
+	local centreY = eaveY + rise / 2 + 0.4
+	local long = ridgeTo - ridgeFrom + 2
+	local alongMid = (ridgeFrom + ridgeTo) / 2
+	local up = if ridgeAt > eaveAt then 1 else -1
+	local cf
+	if axis == "X" then
+		-- Slope rises along Z.
+		cf = CFrame.new(alongMid, centreY, mid) * CFrame.Angles(-up * pitch, 0, 0)
+		part(f, "Roof", Vector3.new(long, 0.8, length), cf, C.roof, M.RoofShingles)
+	else
+		-- Slope rises along X.
+		cf = CFrame.new(mid, centreY, alongMid) * CFrame.Angles(0, 0, up * pitch)
+		part(f, "Roof", Vector3.new(length, 0.8, long), cf, C.roof, M.RoofShingles)
+	end
+end
+
+-- A crow-stepped gable on a wall plane, rising above the roof line.
+local function steppedGable(f: Instance, axis: string, fixed: number, from: number, to: number, eaveY: number, pitch: number, steps: number)
+	local width = to - from
+	local centre = (from + to) / 2
+	local height = width / 2 * math.tan(pitch)
+	for k = 0, steps - 1 do
+		local w = width * (1 - k / steps)
+		local y1 = eaveY + k * height / steps
+		local y2 = y1 + height / steps + 0.8
+		if axis == "X" then
+			box(f, "Gable", centre - w / 2, centre + w / 2, y1, y2, fixed - 0.6, fixed + 0.6, C.stone, M.Cobblestone)
+		else
+			box(f, "Gable", fixed - 0.6, fixed + 0.6, y1, y2, centre - w / 2, centre + w / 2, C.stone, M.Cobblestone)
+		end
+	end
+end
+
+local function chimney(f: Instance, x: number, z: number, y1: number, y2: number)
+	box(f, "Chimney", x - 1.5, x + 1.5, y1, y2, z - 1.5, z + 1.5, C.stone, M.Cobblestone)
+	box(f, "ChimneyCap", x - 1.9, x + 1.9, y2, y2 + 0.5, z - 1.9, z + 1.9, C.stoneDark, M.Slate)
+	for _, dx in { -0.7, 0.7 } do
+		column(f, "ChimneyPot", x + dx, y2 + 0.5, z, 1.4, 0.8, Color3.fromRGB(120, 70, 50), M.Brick)
+	end
+end
+
+-- An upper-floor window, painted on: glass and a frame on the outer face.
+local function upperWindow(f: Instance, axis: string, face: number, side: number, along: number, y1: number, y2: number, lit: boolean?)
+	local n1, n2 = face, face + side * 0.2
+	if n1 > n2 then
+		n1, n2 = n2, n1
+	end
+	local function plate(name: string, a1: number, a2: number, b1: number, b2: number, colour: Color3, material: Enum.Material): Part
+		if axis == "X" then
+			return decor(box(f, name, a1, a2, b1, b2, n1, n2, colour, material)) :: Part
+		end
+		return decor(box(f, name, n1, n2, b1, b2, a1, a2, colour, material)) :: Part
+	end
+	plate("UpperWindowFrame", along - 2, along + 2, y1 - 0.3, y2 + 0.3, C.oakDark, M.Wood)
+	local pane = plate("UpperWindow", along - 1.6, along + 1.6, y1, y2, if lit then Color3.fromRGB(150, 110, 60) else Color3.fromRGB(24, 28, 34), if lit then M.Neon else M.Glass)
+	if lit then
+		pane.Transparency = 0.35
+		local light = Instance.new("PointLight")
+		light.Range = 12
+		light.Brightness = 0.9
+		light.Color = Color3.fromRGB(255, 190, 120)
+		light:SetAttribute("Flicker", "window")
+		light.Parent = pane
+	end
+end
+
+local function deadTree(f: Instance, x: number, z: number, rng: Build.Rng)
+	local height = rng:number(14, 22)
+	column(f, "TreeTrunk", x, 0, z, height, rng:number(1.4, 2.2), C.bark, M.Wood)
+	for _ = 1, rng:integer(4, 6) do
+		local h = height * rng:number(0.5, 0.95)
+		local a = rng:number(0, math.pi * 2)
+		local reach = rng:number(3, 7)
+		local base = Vector3.new(x, h, z)
+		local tip = base + Vector3.new(math.cos(a) * reach, rng:number(2, 5), math.sin(a) * reach)
+		decor(rod(f, "Branch", base, tip, rng:number(0.35, 0.6), C.bark, M.Wood))
+		local twig = tip + Vector3.new(math.cos(a + 0.6) * 2.5, rng:number(1, 2.5), math.sin(a + 0.6) * 2.5)
+		decor(rod(f, "Twig", tip, twig, 0.2, C.bark, M.Wood))
+	end
+end
+
+local function exterior(f: Instance, interact: Instance, rng: Build.Rng)
+	local pitch = math.rad(35)
+	local eave = 26
+
+	-- The upper storey: walls up to the eaves, windows on the outside.
+	box(f, "UpperHall", -60.5, -59.5, 24, eave, -30.5, 30.5, C.stone, M.Cobblestone)
+	box(f, "UpperHall", -60.5, -9.5, 24, eave, -30.5, -29.5, C.stone, M.Cobblestone)
+	box(f, "UpperHall", -60.5, -9.5, 24, eave, 29.5, 30.5, C.stone, M.Cobblestone)
+	box(f, "UpperHall", -10.5, -9.5, 24, eave, -30.5, 30.5, C.stone, M.Cobblestone)
+	box(f, "UpperGallery", -10, 110.5, 20, eave, -30.5, -29.5, C.stone, M.Cobblestone)
+	box(f, "UpperGallery", -10, 110.5, 20, eave, -8.5, -7.5, C.stone, M.Cobblestone)
+	box(f, "UpperGallery", 109.5, 110.5, 20, eave, -30.5, -7.5, C.stone, M.Cobblestone)
+	box(f, "UpperWing", -10, 110.5, 12, eave, 29.5, 30.5, C.stone, M.Cobblestone)
+	box(f, "UpperWing", -10, 110.5, 12, eave, 7.5, 8.5, C.stone, M.Cobblestone)
+	box(f, "UpperWing", 109.5, 110.5, 12, eave, 7.5, 30.5, C.stone, M.Cobblestone)
+	for x = 0, 100, 14 do
+		upperWindow(f, "X", 30.5, 1, x, 16, 21, x == 70) -- someone's up there
+		upperWindow(f, "X", -30.5, -1, x + 7, 21.5, 25)
+	end
+	for _, z in { -18, -6, 6, 18 } do
+		upperWindow(f, "Z", -60.5, -1, z, 15, 21)
+	end
+
+	-- Roofs.
+	roofSlope(f, "X", -10, 110, -30.5, -19, eave, pitch)
+	roofSlope(f, "X", -10, 110, -7.5, -19, eave, pitch)
+	roofSlope(f, "X", -10, 110, 7.5, 19, eave, pitch)
+	roofSlope(f, "X", -10, 110, 30.5, 19, eave, pitch)
+	roofSlope(f, "Z", -30.5, 30.5, -60.5, -35, eave, pitch)
+	roofSlope(f, "Z", -30.5, 30.5, -9.5, -35, eave, pitch)
+	steppedGable(f, "Z", 110.5, -30.5, -7.5, eave, pitch, 5)
+	steppedGable(f, "Z", 110.5, 7.5, 30.5, eave, pitch, 5)
+	steppedGable(f, "X", -30.5, -60.5, -9.5, eave, pitch, 7)
+	steppedGable(f, "X", 30.5, -60.5, -9.5, eave, pitch, 7)
+	chimney(f, -50, -18, 26, 46)
+	chimney(f, -20, 18, 26, 46)
+	chimney(f, -6, 27, 26, 36) -- the kitchen range
+	chimney(f, 104, -12, 26, 34)
+
+	-- The porch.
+	for _, z in { -5.5, 5.5 } do
+		column(f, "PorchColumn", -67, 0, z, 13, 1.6, C.limestone, M.Limestone)
+	end
+	box(f, "PorchRoof", -70, -60.5, 13, 14, -7.5, 7.5, C.stone, M.Cobblestone)
+	box(f, "PorchPediment", -70, -60.5, 14, 15.5, -6.5, 6.5, C.stone, M.Cobblestone)
+	box(f, "PorchStep", -66, -60.5, 0, 0.3, -5, 5, C.limestone, M.Limestone).CanCollide = false
+	for _, z in { -4.8, 4.8 } do
+		piece(f, "DoorLantern", Vector3.new(0.8, 1.4, 0.8), CFrame.new(-61.1, 9, z), C.iron, M.Metal, true)
+	end
+
+	-- The drive: gravel, a turning circle, a dead fountain.
+	local circle = decor(column(f, "TurningCircle", -92, 0, 0, 0.12, 34, Color3.fromRGB(78, 76, 72), M.Pebble))
+	circle.CFrame = CFrame.new(-92, 0.06, 0) * CFrame.Angles(0, 0, math.rad(90))
+	column(f, "FountainBasin", -92, 0, -27, 1.6, 10, C.limestone, M.Limestone)
+	column(f, "FountainStem", -92, 1.6, -27, 4, 1.2, C.limestone, M.Limestone)
+	column(f, "FountainBowl", -92, 5.6, -27, 0.6, 4, C.limestone, M.Limestone)
+	decor(column(f, "FountainWater", -92, 1.3, -27, 0.2, 9, Color3.fromRGB(26, 34, 30), M.Glass))
+
+	-- Gate piers and railings across the drive.
+	for _, z in { -8, 8 } do
+		box(f, "GatePier", -109.5, -106.5, 0, 7.5, z - 1.5, z + 1.5, C.stone, M.Cobblestone)
+		local ball = part(f, "PierBall", Vector3.one * 2, CFrame.new(-108, 8.5, z), C.limestone, M.Limestone)
+		ball.Shape = Enum.PartType.Ball
+	end
+	for _, side in { -1, 1 } do
+		local z1, z2 = side * 9.5, side * 90
+		local lo, hi = math.min(z1, z2), math.max(z1, z2)
+		local fence = Build.invisible(box(f, "FenceCollider", -108.3, -107.7, 0, 7, lo, hi, C.black))
+		fence.CanCollide = true
+		decor(box(f, "FenceRail", -108.1, -107.9, 1, 1.2, lo, hi, C.iron, M.Metal))
+		decor(box(f, "FenceRail", -108.1, -107.9, 5.6, 5.8, lo, hi, C.iron, M.Metal))
+		for z = lo, hi, 2.5 do
+			decor(box(f, "FencePost", -108.15, -107.85, 0, 6.4, z - 0.12, z + 0.12, C.iron, M.Metal))
+		end
+	end
+	for _, side in { -1, 1 } do
+		local z = side * 11
+		box(f, "Hedge", -104, -76, 0, 4.5, z - 1, z + 1, C.hedge, M.LeafyGrass)
+	end
+
+	-- Dead trees.
+	for _, p in {
+		{ -200, -60 }, { -180, 40 }, { -230, -120 }, { -170, 110 }, { -260, 30 }, { -140, -80 },
+		{ -150, 70 }, { -210, 160 }, { -120, -140 }, { -40, -80 }, { 10, -60 }, { 60, -95 },
+		{ -30, 70 }, { 30, 62 }, { 80, 90 }, { -90, 60 }, { -78, -62 }, { 95, 48 },
+	} do
+		deadTree(f, p[1], p[2], rng)
+	end
+
+	-- The family plot by the cliff, and one grave dug and left open.
+	for i = 0, 9 do
+		local gx = 112 + (i % 5) * 3.4
+		local gz = -72 + math.floor(i / 5) * 9
+		local stone = part(f, "Headstone", Vector3.new(2.2, 3, 0.5), CFrame.new(gx, 1.3, gz) * CFrame.Angles(math.rad(rng:number(-9, 9)), 0, math.rad(rng:number(-6, 6))), C.limestone, M.Limestone)
+		if i == 2 then
+			Build.label(decor(part(f, "Epitaph", Vector3.new(1.8, 1.4, 0.05), stone.CFrame * CFrame.new(0, 0.3, 0.28), C.limestone, M.Limestone)), "ASHGROVE", Enum.NormalId.Back, C.black)
+		end
+	end
+	box(f, "OpenGrave", 113, 117, -0.6, 0.02, -52, -50, C.black, M.Mud).CanCollide = false
+	box(f, "SpoilHeap", 117.5, 120, 0, 1.4, -53, -49, C.earth, M.Mud)
+	decor(rod(f, "Spade", Vector3.new(118.5, 0, -48.5), Vector3.new(119.2, 4.5, -48.2), 0.2, C.oak, M.Wood))
+	local chit = part(interact:FindFirstChild("Notes") :: Instance, "Grave_Receipt", Vector3.new(1, 0.05, 1.4), CFrame.new(118.9, 3, -48.1) * CFrame.Angles(math.rad(80), 0, 0), C.paper)
+	chit:SetAttribute("NoteId", "Grave_Receipt")
+	for z = -78, -42, 3 do
+		decor(box(f, "PlotRailing", 109, 109.2, 0, 3, z - 0.1, z + 0.1, C.iron, M.Metal))
+	end
+	decor(box(f, "PlotRail", 109, 109.2, 2.6, 2.8, -78, -42, C.iron, M.Metal))
+
+	-- The cliff stair down to the boathouse: Story 2. Chained for now.
+	box(f, "CliffArchPier", 123, 125, 0, 9, -89, -87, C.stone, M.Cobblestone)
+	box(f, "CliffArchPier", 123, 125, 0, 9, -82, -80, C.stone, M.Cobblestone)
+	box(f, "CliffArchTop", 123, 125, 9, 11, -89, -80, C.stone, M.Cobblestone)
+	local gate = box(interact:FindFirstChild("Doors") :: Instance, "CliffStairGate", 123.7, 124.3, 0, 9, -87, -82, C.iron, M.Metal)
+	gate:SetAttribute("DoorId", "CliffStairGate")
+	gate:SetAttribute("StartsLocked", true)
+	gate:SetAttribute("LockedText", "The cliff stair down to the boathouse. Chained, and the chain is wet.")
+
+	-- Rocks at the foot of the cliff.
+	for _ = 1, 26 do
+		local s = rng:number(6, 16)
+		part(f, "Rock", Vector3.new(s, s * rng:number(0.5, 1), s * rng:number(0.7, 1.2)), CFrame.new(rng:number(133, 160), rng:number(-126, -118), rng:number(-280, 280)) * CFrame.Angles(rng:number(0, 1), rng:number(0, 6), rng:number(0, 1)), C.stoneDark, M.Basalt)
+	end
+
+	-- A lighthouse out at sea, its beam going round.
+	local lx, lz = 330, -200
+	box(f, "LighthouseRock", lx - 20, lx + 20, -130, -112, lz - 20, lz + 20, C.stoneDark, M.Basalt)
+	column(f, "Lighthouse", lx, -112, lz, 70, 14, C.white, M.Concrete)
+	for i = 0, 2 do
+		decor(column(f, "LighthouseBand", lx, -100 + i * 20, lz, 5, 14.3, C.red, M.Concrete))
+	end
+	column(f, "LighthouseGallery", lx, -42, lz, 1, 18, C.iron, M.Metal)
+	local lamp = column(f, "LighthouseLamp", lx, -41, lz, 6, 9, C.lamp, M.Neon)
+	local lampLight = Instance.new("PointLight")
+	lampLight.Range = 60
+	lampLight.Brightness = 2
+	lampLight.Color = C.lamp
+	lampLight.Parent = lamp
+	column(f, "LighthouseCap", lx, -35, lz, 3, 11, C.iron, M.Metal)
+	local beam = decor(part(f, "LighthouseBeam", Vector3.new(4, 4, 360), CFrame.new(lx, -38, lz) * CFrame.new(0, 0, -180), C.lamp, M.Neon))
+	beam.Transparency = 0.86
+	beam:SetAttribute("Spin", true)
+	beam:SetAttribute("SpinCentre", Vector3.new(lx, -38, lz))
+end
+
+------------------------------------------------------------------ entry
+
+function Dressing.dress(root: Model)
+	local geo = root:FindFirstChild("Geometry") :: Instance
+	local interact = root:FindFirstChild("Interact") :: Instance
+	local rng = Build.random(1907)
+	hall(Build.folder(geo, "HallDressing"), rng)
+	gallery(Build.folder(geo, "GalleryDressing"), rng)
+	servants(Build.folder(geo, "ServantsDressing"), rng)
+	vault(Build.folder(geo, "VaultDressing"), rng)
+	exterior(Build.folder(geo, "Exterior"), interact, rng)
+end
+
+return Dressing
+]=] },
 	{ service = {"ServerScriptService"}, path = {"Ashgrove", "Entities"}, class = "Folder", source = nil },
 	{ service = {"ServerScriptService"}, path = {"Ashgrove", "Entities", "Dullahan"}, class = "ModuleScript", source = [=[
 --[[
@@ -2591,7 +3500,19 @@ local function flat(v: Vector3): Vector3
 end
 
 local function hasHead(e): boolean
-	return not e.data.blind and e.data.head ~= nil and e.data.headWeld ~= nil and e.data.headWeld.Parent ~= nil
+	local d = e.data
+	return not d.blind and d.head ~= nil and d.headJoint ~= nil and d.headJoint.Parent ~= nil
+end
+
+-- Sets the head's turn on its joint (C0 if the head is the joint's Part1,
+-- otherwise C1), from the pose it had when built.
+local function poseHead(d)
+	local turn = CFrame.Angles(0, d.headYaw or 0, 0)
+	if d.headJoint.Part1 == d.head then
+		d.headJoint.C0 = d.headBase * turn
+	else
+		d.headJoint.C1 = d.headBase * turn:Inverse()
+	end
 end
 
 local function headLook(e): Vector3
@@ -2608,7 +3529,7 @@ local function turnHeadTowards(e, direction: Vector3, dt: number, rate: number)
 	local current = e.data.headYaw or 0
 	local step = math.clamp(target - current, -rate * dt, rate * dt)
 	e.data.headYaw = current + step
-	e.data.headWeld.C0 = CFrame.new(Rigs.DULLAHAN_HEAD_OFFSET) * CFrame.Angles(0, e.data.headYaw, 0)
+	poseHead(e.data)
 end
 
 local function headSees(e, player: Player, range: number): boolean
@@ -2660,11 +3581,11 @@ end
 
 local function dropHead(e)
 	local d = e.data
-	if not hasHead(e) then
+	if not hasHead(e) or not d.canDropHead then
 		return
 	end
-	d.headWeld:Destroy()
-	d.headWeld = nil
+	d.headJoint:Destroy()
+	d.headJoint = nil
 	d.blind = true
 	d.bodyHits = 0
 	local head: BasePart = d.head
@@ -2676,6 +3597,7 @@ local function dropHead(e)
 	end)
 	Audio.play("headDrop", head, 0.8)
 	Noise.emit(head.Position, 25, "impact")
+	e.animOverride = "blind"
 	e:setState("Blind")
 end
 
@@ -2689,14 +3611,12 @@ local function returnHead(e)
 	head.Massless = true
 	head.AssemblyLinearVelocity = Vector3.zero
 	d.headYaw = 0
-	local weld = Instance.new("Weld")
-	weld.Name = "HeadWeld"
-	weld.Part0 = e.root
-	weld.Part1 = head
-	weld.C0 = CFrame.new(Rigs.DULLAHAN_HEAD_OFFSET)
-	weld.Parent = head
-	d.headWeld = weld
+	local joint = d.headTemplate:Clone()
+	joint.Parent = head
+	d.headJoint = joint
+	poseHead(d)
 	d.blind = false
+	e.animOverride = nil
 	Say.near(e.root.Position, 60, "[He finds his head]", 3, "sound")
 end
 
@@ -2710,8 +3630,13 @@ end
 
 function Dullahan.build(e)
 	local model, root, humanoid, parts = Rigs.dullahan()
+	local joint = parts.headJoint
 	e.data.head = parts.head
-	e.data.headWeld = parts.headWeld
+	e.data.headJoint = joint
+	-- Kept to put the head back after it's been shot out of his hands.
+	e.data.headTemplate = joint:Clone()
+	e.data.headBase = if joint.Part1 == parts.head then joint.C0 else joint.C1
+	e.data.canDropHead = parts.head ~= root
 	e.data.headYaw = 0
 	e.data.route = Map.markers("Dullahan_Route_")
 	e.data.routeIndex = 1
@@ -2830,6 +3755,7 @@ function Dullahan.step(e, dt: number)
 			e:face((Crew.root(target) :: BasePart).Position)
 		end
 		if e:inState() >= cfg.windupTime then
+			e:action("attack")
 			Audio.play("dullahanWhip", root, 1, 200)
 			Say.near(root.Position, 80, "[CRACK]", 2, "sound")
 			if target and e:canTarget(target) and e:distanceTo(target) <= cfg.whipRange + 1.5 and e:canSee(root.Position, target, cfg.whipRange + 3) then
@@ -2944,9 +3870,9 @@ function Dullahan.onBanish(e, model: Model, _killer: Player?)
 	local head: BasePart? = d.head
 	local position = model:GetPivot().Position
 	-- The head stays, still glowing, where it rolled.
-	if head then
-		if d.headWeld then
-			d.headWeld:Destroy()
+	if head and d.canDropHead then
+		if d.headJoint then
+			d.headJoint:Destroy()
 		end
 		head.Massless = false
 		head.CanCollide = true
@@ -2965,7 +3891,7 @@ function Dullahan.onBanish(e, model: Model, _killer: Player?)
 		root.CanCollide = false
 	end
 	for _, p in model:GetDescendants() do
-		if p:IsA("WeldConstraint") then
+		if p:IsA("WeldConstraint") or p:IsA("JointInstance") then
 			p:Destroy()
 		elseif p:IsA("BasePart") and p ~= root then
 			p.CanCollide = true
@@ -3026,7 +3952,9 @@ local Config = require(ReplicatedStorage:WaitForChild("Ashgrove"):WaitForChild("
 local Ashgrove = script.Parent.Parent
 local Crew = require(Ashgrove.Crew)
 local Map = require(Ashgrove.Map)
+local Models = require(Ashgrove.Models)
 local Noise = require(Ashgrove.Noise)
+local Shots = require(Ashgrove.Shots)
 local Registry = require(script.Parent.Registry)
 
 local Entity = {}
@@ -3062,6 +3990,8 @@ function Entity.new(id: string, cfg: { [string]: any }, behaviour: { [string]: a
 		pathGoal = Vector3.zero,
 		pathAt = 0,
 		pathBusy = false,
+		anim = nil :: Models.Animations?,
+		animOverride = nil :: string?,
 	}, Entity)
 	Registry.add(self)
 	return self
@@ -3096,9 +4026,35 @@ function Entity:spawn()
 	local model, root, humanoid = self.behaviour.build(self)
 	model:SetAttribute("EntityId", self.id)
 	model:PivotTo(marker.CFrame)
+	-- Stand it on the floor whatever its size (your model may be taller
+	-- or shorter than the greybox).
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { model }
+	local floor = workspace:Raycast(marker.Position + Vector3.new(0, 2, 0), Vector3.new(0, -30, 0), params)
+	if floor then
+		local box, size = model:GetBoundingBox()
+		local bottom = box.Position.Y - size.Y / 2
+		model:PivotTo(model:GetPivot() + Vector3.new(0, floor.Position.Y + 0.05 - bottom, 0))
+	end
 	model.Parent = folder()
 	root:SetNetworkOwner(nil)
 	self.model, self.root, self.humanoid = model, root, humanoid
+	self.anim = Models.animations(model, self.id)
+	self.animOverride = nil
+
+	-- Your gun's damage is the confirmed hit (see Shots). Health is topped
+	-- straight back up: Ashgrove's monsters die by their rules, not by HP.
+	local lastHealth = humanoid.Health
+	humanoid.HealthChanged:Connect(function(health)
+		if health < lastHealth - 0.01 and self.humanoid == humanoid then
+			humanoid.Health = humanoid.MaxHealth
+			lastHealth = humanoid.MaxHealth
+			Shots.onDamaged(self)
+		else
+			lastHealth = health
+		end
+	end)
 	self.status = "active"
 	self.state = ""
 	self:setState("Idle")
@@ -3328,6 +4284,13 @@ function Entity:face(point: Vector3)
 	end
 end
 
+-- A one-off animation (Config.models[id].animations), e.g. "attack".
+function Entity:action(name: string)
+	if self.anim then
+		self.anim.action(name)
+	end
+end
+
 function Entity:shot(part: BasePart, shooter: Player, position: Vector3)
 	if self.status == "active" then
 		self.behaviour.onShot(self, part, shooter, position)
@@ -3387,6 +4350,11 @@ function Entity.startLoop()
 						local ok, err = pcall(e.behaviour.step, e, dt)
 						if not ok then
 							warn(`[Ashgrove] {e.id} step failed: {err}`)
+						end
+						if e.anim and e.root then
+							local v = e.root.AssemblyLinearVelocity
+							local speed = Vector3.new(v.X, 0, v.Z).Magnitude
+							e.anim.loop(e.animOverride or (if speed > 10 then "run" elseif speed > 0.5 then "walk" else "idle"))
 						end
 					end
 				elseif e.status == "banished" and now >= e.reformAt then
@@ -3544,6 +4512,7 @@ function Lampshy.step(e, _dt: number)
 		end
 		local targetRoot = Crew.root(target :: Player) :: BasePart
 		if e:distanceTo(target :: Player) <= cfg.lungeRange then
+			e:action("attack")
 			Audio.play("lampshyLunge", root, 1)
 			Say.near(root.Position, 40, "[It lunges]", 2, "sound")
 			Crew.hit(target :: Player, 1)
@@ -3699,23 +4668,27 @@ return Registry
 ]=] },
 	{ service = {"ServerScriptService"}, path = {"Ashgrove", "Entities", "Rigs"}, class = "ModuleScript", source = [=[
 --[[
-	Rigs: greybox bodies for the entities, built from blocks so the game
-	runs before the art team's models exist.
+	Rigs: the entities' bodies. Your own model is used when Models finds
+	one (see Models.luau for where to put it); otherwise a greybox body
+	built from blocks, so the game always runs.
 
-	REPLACING WITH ART: keep the contract, not the blocks.
-	  - Killable entities: a Model with a Humanoid and an unrotated,
-	    invisible "HumanoidRootPart" whose -Z is the facing. Every part a
-	    bullet can hit carries a Hitbox attribute ("Head" or "Body").
-	  - Dullahan: the carried head is a separate part named "CarriedHead",
-	    held by a Weld (not a WeldConstraint) whose C0 the AI turns.
-	  - Banshee: a Model with an invisible "Root" at her feet and a part
-	    named "Face". Anchored, no collisions; she never walks.
-	Sizes follow the art brief (studs; a player is about 5.5 tall).
+	What a body gives the AI either way (Models prepares yours to match):
+	  - Killable entities: a Model with a Humanoid and a "HumanoidRootPart"
+	    whose -Z is the facing. Hittable parts carry a Hitbox attribute
+	    ("Head" or "Body").
+	  - Dullahan: the carried head is its own part, held by a joint whose
+	    C0 the AI turns (so the head looks around) and that it breaks when
+	    the head is shot out of his hands.
+	  - Banshee: a Model whose pivot ("Root") is at her feet, plus the part
+	    used as her face. No collisions; she never walks.
+	Greybox sizes follow the art brief (studs; a player is about 5.5 tall).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("Ashgrove"):WaitForChild("Config"))
+
+local Models = require(script.Parent.Parent.Models)
 
 local Rigs = {}
 
@@ -3735,19 +4708,7 @@ local function newRig(name: string, rootSize: Vector3, hipHeight: number): (Mode
 	local humanoid = Instance.new("Humanoid")
 	humanoid.RigType = Enum.HumanoidRigType.R15
 	humanoid.HipHeight = hipHeight
-	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
-	humanoid.BreakJointsOnDeath = false
-	humanoid.RequiresNeck = false -- greybox rigs have no neck joint
-	humanoid.MaxHealth = 1e6
-	humanoid.Health = 1e6
-	humanoid.UseJumpPower = true
-	humanoid.JumpPower = 0
-	humanoid.WalkSpeed = 0
-	humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-	humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-	humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing, false)
-	humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
+	Models.configureHumanoid(humanoid)
 	humanoid.Parent = model
 	return model, root, humanoid
 end
@@ -3777,9 +4738,24 @@ end
 
 Rigs.DULLAHAN_HEAD_OFFSET = Vector3.new(1.9, 1.7, -1.7)
 
--- Tall, headless, coated. Carries a glowing head in the right hand and a
--- whip of spine in the left. About 7.9 studs to the shoulders.
-function Rigs.dullahan(): (Model, Part, Humanoid, { head: Part, headWeld: Weld })
+export type HeadRig = { head: BasePart, headJoint: JointInstance }
+
+-- The Dullahan: your model, or a greybox one: tall, headless, coated,
+-- carrying a glowing head in the right hand and a whip of spine in the left.
+function Rigs.dullahan(): (Model, BasePart, Humanoid, HeadRig)
+	local custom, customRoot, customHumanoid, customHead = Models.creature("Dullahan")
+	if custom and customRoot and customHumanoid then
+		local head = customHead or customRoot
+		if customHead then
+			local glow = Instance.new("PointLight")
+			glow.Range = Config.entities.Dullahan.headGlowRadius
+			glow.Brightness = 1.2
+			glow.Color = Color3.fromRGB(255, 226, 170)
+			glow.Parent = customHead
+		end
+		return custom, customRoot, customHumanoid, { head = head, headJoint = Models.jointFor(custom, customRoot, head) }
+	end
+
 	local model, root, humanoid = newRig("Dullahan", Vector3.new(2, 2, 1), 2.5)
 	local coat = Color3.fromRGB(28, 26, 28)
 	local cloth = Color3.fromRGB(46, 42, 40)
@@ -3845,11 +4821,16 @@ function Rigs.dullahan(): (Model, Part, Humanoid, { head: Part, headWeld: Weld }
 	headWeld.Parent = head
 	head.Parent = model
 
-	return model, root, humanoid, { head = head, headWeld = headWeld }
+	return model, root, humanoid, { head = head, headJoint = headWeld }
 end
 
--- PLACEHOLDER minor entity (decision #1): a low, pale crawler.
-function Rigs.lampshy(): (Model, Part, Humanoid)
+-- The Lamp-shy (PLACEHOLDER minor entity, decision #1): your model, or a
+-- low, pale greybox crawler.
+function Rigs.lampshy(): (Model, BasePart, Humanoid)
+	local custom, customRoot, customHumanoid = Models.creature("Lampshy")
+	if custom and customRoot and customHumanoid then
+		return custom, customRoot, customHumanoid
+	end
 	local model, root, humanoid = newRig("Lampshy", Vector3.new(2, 1.4, 3), 0.3)
 	local skin = Color3.fromRGB(200, 196, 186)
 	limb(model, root, "Body", Vector3.new(1.8, 1.1, 3.6), CFrame.new(0, 0.1, 0), skin, nil, "Body")
@@ -3866,9 +4847,14 @@ function Rigs.lampshy(): (Model, Part, Humanoid)
 	return model, root, humanoid
 end
 
--- The Banshee: tall, still, robed in her reserved colour. Anchored; she
--- appears and disappears, she never walks.
-function Rigs.banshee(): Model
+-- The Banshee: your model, or a greybox one, tall, still, robed in her
+-- reserved colour. Anchored; she appears and disappears, she never walks.
+-- Returns the model, her face (torch check) and where her keen comes from.
+function Rigs.banshee(): (Model, BasePart, BasePart)
+	local custom, customFace, customChest = Models.banshee()
+	if custom and customFace and customChest then
+		return custom, customFace, customChest
+	end
 	local model = Instance.new("Model")
 	model.Name = "Banshee"
 	local root = Instance.new("Part")
@@ -3919,26 +4905,101 @@ function Rigs.banshee(): Model
 	light.Color = colour
 	light.Range = 12
 	light.Brightness = 0.7
-	light.Parent = model:FindFirstChild("Chest")
-	return model
+	local chest = model:FindFirstChild("Chest") :: BasePart
+	light.Parent = chest
+	return model, model:FindFirstChild("Face") :: BasePart, chest
 end
 
 return Rigs
 ]=] },
-	{ service = {"ServerScriptService"}, path = {"Ashgrove", "Greybox"}, class = "ModuleScript", source = [=[
+	{ service = {"ServerScriptService"}, path = {"Ashgrove", "Hooks"}, class = "ModuleScript", source = [=[
 --[[
-	Greybox: builds Story 1's Ashgrove House out of grey blocks, so the game
-	is playable before any art exists. The art brief's assets replace these
-	blocks one-for-one; the gameplay never looks at the blocks themselves,
-	only at what's in the Zones, Markers and Interact folders.
+	Hooks: where Ashgrove meets the rest of your game.
+
+	Nothing here is required: out of the box Ashgrove notices your gun on
+	its own (see Shots). Wire these in when you want exact behaviour.
+
+	----------------------------------------------------------------------
+	YOUR GUN -> ASHGROVE. From your gun's SERVER code:
+
+	    local Ashgrove = require(game.ServerScriptService.Ashgrove.Hooks)
+
+	    -- a bullet hit something (call it for every hit; misses are fine
+	    -- to skip). Ashgrove ignores parts that aren't its monsters.
+	    Ashgrove.reportHit(player, hitPart, hitPosition)
+
+	    -- a shot was fired, hit or miss: monsters hear it
+	    Ashgrove.reportShot(player, muzzlePosition)
+
+	    -- the player started reloading: their torch goes off meanwhile
+	    Ashgrove.reportReload(player, reloadSeconds)
+
+	    -- should this player be allowed to shoot right now? false while
+	    -- they're down, taken by the Banshee, or busy (securing, reviving)
+	    if not Ashgrove.canShoot(player) then return end
+
+	----------------------------------------------------------------------
+	ASHGROVE -> YOUR GAME. WIRE UP: replace the body of these.
+
+	    Hooks.giveAmmo(player, rounds) -> boolean
+	        Ammo pickups. Fill it in to give `rounds` to your gun and return
+	        true, then set Hooks.ammoPickups = true below. Until then, ammo
+	        pickups are left out of the map entirely.
+]]
+
+local Crew = require(script.Parent.Crew)
+local Shots = require(script.Parent.Shots)
+
+local Hooks = {}
+
+-- Your gun calls these. ---------------------------------------------------
+
+function Hooks.reportHit(player: Player, hitPart: BasePart, hitPosition: Vector3?)
+	Shots.reportHit(player, hitPart, hitPosition)
+end
+
+function Hooks.reportShot(player: Player, muzzlePosition: Vector3?)
+	Shots.reportShot(player, muzzlePosition)
+end
+
+function Hooks.reportReload(player: Player, reloadSeconds: number?)
+	Shots.reportReload(player, reloadSeconds)
+end
+
+function Hooks.canShoot(player: Player): boolean
+	return Crew.isActive(player) and not Crew.isCommitting(player)
+end
+
+-- WIRE UP. ----------------------------------------------------------------
+
+-- WIRE UP: give `rounds` of ammo to your gun. Return true when you do.
+function Hooks.giveAmmo(_player: Player, _rounds: number): boolean
+	return false
+end
+
+-- WIRE UP: set to true once giveAmmo works, and ammo pickups appear.
+Hooks.ammoPickups = false
+
+return Hooks
+]=] },
+	{ service = {"ServerScriptService"}, path = {"Ashgrove", "House"}, class = "ModuleScript", source = [=[
+--[[
+	House: Ashgrove House, Story 1. Builds the layout the gameplay reads
+	(walls, floors, zones, markers, interactives), then hands over to
+	Dressing for everything that makes it look like a house: panelling,
+	furniture, chandeliers, the roofs, the grounds, the cliff and the sea.
 
 	Boot builds it at runtime if the workspace has no "AshgroveHouse". To
 	see it (and edit it) in Studio before pressing Play, run this in the
 	Command Bar:
 
-	    require(game.ServerScriptService.Ashgrove.Greybox).build()
+	    require(game.ServerScriptService.Ashgrove.House).build()
 
 	Once it exists in the place, Boot uses yours and never rebuilds it.
+	Move furniture, swap pieces for the art brief's AH_Kit_* / AH_Prop_*
+	models, restyle anything in Geometry: the gameplay never looks at it.
+	Keep Zones, Markers and Interact (they're what the game reads), then
+	run tools/check_greybox.luau to catch anything you've blocked.
 
 	Layout (studs; 1 stud = 0.28 m; ground-floor top at y = 0; +X is east,
 	towards the cliff):
@@ -3952,6 +5013,7 @@ return Rigs
 	        housekeeper 60..85; servants' hall 85..110
 	    Cellar vault     x   20..80     z -20..30, floor at y = -16
 	    Cliff edge       x  130, sea far below
+	    Upper floor, study, cliff stair: built shut, for later stories
 
 	What the systems read:
 	    Zones/*     invisible boxes. Attributes: Wing, Room, Sanctuary,
@@ -3962,7 +5024,10 @@ return Rigs
 	                BellBoard, Glows
 ]]
 
-local Greybox = {}
+local Build = require(script.Parent.Build)
+local Dressing = require(script.Parent.Dressing)
+
+local House = {}
 
 local C = {
 	stone = Color3.fromRGB(88, 86, 82),
@@ -3986,37 +5051,64 @@ local C = {
 	paper = Color3.fromRGB(218, 210, 188),
 	bone = Color3.fromRGB(206, 196, 168),
 	lamp = Color3.fromRGB(255, 214, 160),
+	frame = Color3.fromRGB(40, 30, 24),
+	brick = Color3.fromRGB(96, 66, 54),
+	oakDark = Color3.fromRGB(48, 34, 26),
+	hallPaper = Color3.fromRGB(46, 58, 48), -- deep green
+	galleryPaper = Color3.fromRGB(84, 28, 30), -- oxblood
+	limewash = Color3.fromRGB(168, 160, 142),
+	limewashDirty = Color3.fromRGB(122, 114, 98),
+	fadedPaper = Color3.fromRGB(104, 92, 76),
+	cornice = Color3.fromRGB(150, 144, 130),
+}
+
+type Layer = { colour: Color3, material: Enum.Material, height: number? }
+type Finish = {
+	lower: Layer?,
+	upper: Layer,
+	trim: Color3,
+	skirting: boolean?,
+	dado: boolean?,
+	cornice: boolean?,
+}
+
+-- Interior finishes, room by room.
+local F: { [string]: Finish } = {
+	hall = {
+		lower = { colour = C.oak, material = Enum.Material.Wood, height = 6 },
+		upper = { colour = C.hallPaper, material = Enum.Material.Fabric },
+		trim = C.oakDark,
+		skirting = true,
+		dado = true,
+		cornice = true,
+	},
+	gallery = {
+		lower = { colour = C.oakDark, material = Enum.Material.Wood, height = 4.5 },
+		upper = { colour = C.galleryPaper, material = Enum.Material.Fabric },
+		trim = C.frame,
+		skirting = true,
+		dado = true,
+		cornice = true,
+	},
+	servants = {
+		lower = { colour = C.limewashDirty, material = Enum.Material.Plaster, height = 3.5 },
+		upper = { colour = C.limewash, material = Enum.Material.Plaster },
+		trim = C.oakDark,
+		skirting = true,
+	},
+	housekeeper = {
+		lower = { colour = C.oak, material = Enum.Material.Wood, height = 3.5 },
+		upper = { colour = C.fadedPaper, material = Enum.Material.Fabric },
+		trim = C.oakDark,
+		skirting = true,
+		dado = true,
+	},
 }
 
 type Gap = { at: number, width: number, height: number, sill: number?, glass: boolean? }
 
-local function part(parent: Instance, name: string, size: Vector3, cf: CFrame, colour: Color3, material: Enum.Material?): Part
-	local p = Instance.new("Part")
-	p.Name = name
-	p.Anchored = true
-	p.Size = size
-	p.CFrame = cf
-	p.Color = colour
-	p.Material = material or Enum.Material.SmoothPlastic
-	p.TopSurface = Enum.SurfaceType.Smooth
-	p.BottomSurface = Enum.SurfaceType.Smooth
-	p.Parent = parent
-	return p
-end
-
-local function box(parent: Instance, name: string, x1: number, x2: number, y1: number, y2: number, z1: number, z2: number, colour: Color3, material: Enum.Material?): Part
-	local size = Vector3.new(math.abs(x2 - x1), math.abs(y2 - y1), math.abs(z2 - z1))
-	local centre = Vector3.new((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2)
-	return part(parent, name, size, CFrame.new(centre), colour, material)
-end
-
-local function invisible(p: BasePart): BasePart
-	p.Transparency = 1
-	p.CanCollide = false
-	p.CanQuery = false
-	p.CanTouch = false
-	return p
-end
+local part, box, invisible, folder = Build.part, Build.box, Build.invisible, Build.folder
+local setAttributes = Build.attributes
 
 -- A 1-stud-thick wall running along `axis` from `from` to `to`, centred on
 -- `fixed` on the other axis, with door and window gaps.
@@ -4049,6 +5141,10 @@ local function wall(parent: Instance, name: string, axis: string, from: number, 
 		if g.glass then
 			local glass = seg(name .. "Glass", a, b, y0 + sill, y0 + top, 0.1, C.glass, Enum.Material.Glass)
 			glass.Transparency = 0.55
+			-- Mullion and transom: dark timber in the window's plane.
+			seg(name .. "Mullion", g.at - 0.15, g.at + 0.15, y0 + sill, y0 + top, 0.2, C.frame, Enum.Material.Wood)
+			local transom = y0 + sill + g.height * 0.66
+			seg(name .. "Transom", a, b, transom - 0.15, transom + 0.15, 0.2, C.frame, Enum.Material.Wood)
 		end
 		cursor = b
 	end
@@ -4061,39 +5157,95 @@ local function slab(parent: Instance, name: string, x1: number, x2: number, z1: 
 	return box(parent, name, x1, x2, top - 1, top, z1, z2, colour, material)
 end
 
-local function folder(parent: Instance, name: string): Folder
-	local f = Instance.new("Folder")
-	f.Name = name
-	f.Parent = parent
-	return f
-end
+-- Lines one face of a wall with a room's finish: panelling, wallpaper or
+-- limewash, skirting, dado rail and cornice, and door and window casings.
+-- `side` is +1 for the face towards +X/+Z, -1 for the other. Only
+-- [from, to] along the wall is lined (a wall can face several rooms).
+-- Linings are cosmetic: no collisions.
+local function lineFace(parent: Instance, axis: string, fixed: number, side: number, from: number, to: number, y0: number, height: number, gaps: { Gap }, finish: Finish)
+	local face = fixed + side * 0.5
+	local function slabOn(name: string, a: number, b: number, y1: number, y2: number, depth: number, colour: Color3, material: Enum.Material)
+		if b - a < 0.05 or y2 - y1 < 0.05 then
+			return
+		end
+		local n1, n2 = face, face + side * depth
+		if n1 > n2 then
+			n1, n2 = n2, n1
+		end
+		local p = if axis == "X" then box(parent, name, a, b, y1, y2, n1, n2, colour, material) else box(parent, name, n1, n2, y1, y2, a, b, colour, material)
+		Build.decor(p)
+	end
 
-local function setAttributes(inst: Instance, attrs: { [string]: any }?)
-	if attrs then
-		for k, v in attrs do
-			inst:SetAttribute(k, v)
+	local inRange = {}
+	for _, g in gaps do
+		local a, b = g.at - g.width / 2, g.at + g.width / 2
+		if b > from and a < to then
+			table.insert(inRange, { a = math.max(a, from), b = math.min(b, to), sill = g.sill or 0, top = (g.sill or 0) + g.height })
+		end
+	end
+	table.sort(inRange, function(g1, g2)
+		return g1.a < g2.a
+	end)
+
+	-- The solid pieces of this face: full height, under a sill, over a lintel.
+	local pieces = {}
+	local cursor = from
+	for _, g in inRange do
+		if g.a > cursor then
+			table.insert(pieces, { cursor, g.a, y0, y0 + height })
+		end
+		if g.sill > 0 then
+			table.insert(pieces, { g.a, g.b, y0, y0 + g.sill })
+		end
+		if g.top < height then
+			table.insert(pieces, { g.a, g.b, y0 + g.top, y0 + height })
+		end
+		cursor = g.b
+	end
+	if cursor < to then
+		table.insert(pieces, { cursor, to, y0, y0 + height })
+	end
+
+	local lowerTop = y0 + (if finish.lower then finish.lower.height or 0 else 0)
+	for _, piece in pieces do
+		local a, b, y1, y2 = piece[1], piece[2], piece[3], piece[4]
+		if finish.lower and y1 < lowerTop then
+			slabOn("Panelling", a, b, y1, math.min(y2, lowerTop), 0.12, finish.lower.colour, finish.lower.material)
+		end
+		if y2 > lowerTop then
+			slabOn("Lining", a, b, math.max(y1, lowerTop), y2, 0.08, finish.upper.colour, finish.upper.material)
+		end
+		if finish.skirting and y1 == y0 then
+			slabOn("Skirting", a, b, y0, y0 + 0.8, 0.25, finish.trim, Enum.Material.Wood)
+		end
+		if finish.dado and finish.lower and y1 <= lowerTop and y2 >= lowerTop + 0.3 then
+			slabOn("DadoRail", a, b, lowerTop, lowerTop + 0.3, 0.22, finish.trim, Enum.Material.Wood)
+		end
+		if finish.cornice and y2 == y0 + height then
+			slabOn("Cornice", a, b, y0 + height - 0.7, y0 + height, 0.45, C.cornice, Enum.Material.Plaster)
+		end
+	end
+
+	-- Casings: architraves round doors, frames and a sill board on windows.
+	for _, g in inRange do
+		if g.sill == 0 then
+			slabOn("Architrave", g.a - 0.35, g.a, y0, y0 + g.top + 0.35, 0.22, finish.trim, Enum.Material.Wood)
+			slabOn("Architrave", g.b, g.b + 0.35, y0, y0 + g.top + 0.35, 0.22, finish.trim, Enum.Material.Wood)
+			slabOn("Architrave", g.a, g.b, y0 + g.top, y0 + g.top + 0.35, 0.22, finish.trim, Enum.Material.Wood)
+		else
+			slabOn("WindowCasing", g.a - 0.3, g.a, y0 + g.sill, y0 + g.top, 0.18, finish.trim, Enum.Material.Wood)
+			slabOn("WindowCasing", g.b, g.b + 0.3, y0 + g.sill, y0 + g.top, 0.18, finish.trim, Enum.Material.Wood)
+			slabOn("WindowCasing", g.a - 0.3, g.b + 0.3, y0 + g.top, y0 + g.top + 0.3, 0.18, finish.trim, Enum.Material.Wood)
+			slabOn("WindowSill", g.a - 0.4, g.b + 0.4, y0 + g.sill - 0.25, y0 + g.sill, 0.45, finish.trim, Enum.Material.Wood)
 		end
 	end
 end
 
 local function label(p: BasePart, text: string, face: Enum.NormalId)
-	local gui = Instance.new("SurfaceGui")
-	gui.Face = face
-	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-	gui.PixelsPerStud = 40
-	gui.LightInfluence = 1
-	local t = Instance.new("TextLabel")
-	t.Size = UDim2.fromScale(1, 1)
-	t.BackgroundTransparency = 1
-	t.Text = text
-	t.TextScaled = true
-	t.Font = Enum.Font.Garamond
-	t.TextColor3 = C.paper
-	t.Parent = gui
-	gui.Parent = p
+	Build.label(p, text, face, C.paper)
 end
 
-function Greybox.build(opts: { replace: boolean? }?): Model
+function House.build(opts: { replace: boolean? }?): Model
 	local existing = workspace:FindFirstChild("AshgroveHouse")
 	if existing then
 		if opts and opts.replace then
@@ -4225,8 +5377,18 @@ function Greybox.build(opts: { replace: boolean? }?): Model
 	vanLight.Color = C.lamp
 	vanLight.Parent = vanLamp
 
-	-- The first crew's van, dead and open.
+	-- The first crew's van, dead and open. Its lights come on once, at the
+	-- very end of Story 1 (Director).
 	box(geo, "CrewOneVan", -128, -114, 1.5, 8.5, -33.5, -26.5, Color3.fromRGB(70, 74, 80), Enum.Material.Metal)
+	local crewLights = box(geo, "CrewOneHeadlights", -114, -113.8, 2.5, 3.5, -33, -27, C.glass, Enum.Material.Glass)
+	local crewBeam = Instance.new("SpotLight")
+	crewBeam.Face = Enum.NormalId.Right
+	crewBeam.Range = 60
+	crewBeam.Angle = 50
+	crewBeam.Brightness = 3
+	crewBeam.Color = C.lamp
+	crewBeam.Enabled = false
+	crewBeam.Parent = crewLights
 
 	local spawn = Instance.new("SpawnLocation")
 	spawn.Name = "AshgroveSpawn"
@@ -4241,24 +5403,32 @@ function Greybox.build(opts: { replace: boolean? }?): Model
 
 	------------------------------------------------------------------ hall
 	slab(geo, "HallFloor", -60, -10, -30, 30, 0, C.floor, Enum.Material.WoodPlanks)
-	box(geo, "HallCeiling", -60, -10, 24, 25, -30, 30, C.plaster)
-	wall(geo, "HallWest", "Z", -30, 30, -60, 0, 24, {
+	box(geo, "HallCeiling", -60, -10, 24, 25, -30, 30, C.cornice, Enum.Material.Plaster)
+	local hallWestGaps = {
 		{ at = 0, width = 8, height = 12 },
 		{ at = -18, width = 5, height = 10, sill = 4, glass = true },
 		{ at = 18, width = 5, height = 10, sill = 4, glass = true },
-	}, C.stone, Enum.Material.Cobblestone)
-	wall(geo, "HallNorth", "X", -60, -10, -30, 0, 24, {
+	}
+	local hallNorthGaps = {
 		{ at = -45, width = 5, height = 12, sill = 4, glass = true },
 		{ at = -25, width = 5, height = 12, sill = 4, glass = true },
-	}, C.stone, Enum.Material.Cobblestone)
-	wall(geo, "HallSouth", "X", -60, -10, 30, 0, 24, {
+	}
+	local hallSouthGaps = {
 		{ at = -45, width = 5, height = 12, sill = 4, glass = true },
 		{ at = -25, width = 5, height = 12, sill = 4, glass = true },
-	}, C.stone, Enum.Material.Cobblestone)
-	wall(geo, "HallEast", "Z", -30, 30, -10, 0, 24, {
+	}
+	local hallEastGaps = {
 		{ at = -19, width = 10, height = 14 },
 		{ at = 11, width = 5, height = 9 },
-	}, C.wallpaper)
+	}
+	wall(geo, "HallWest", "Z", -30, 30, -60, 0, 24, hallWestGaps, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "HallNorth", "X", -60, -10, -30, 0, 24, hallNorthGaps, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "HallSouth", "X", -60, -10, 30, 0, 24, hallSouthGaps, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "HallEast", "Z", -30, 30, -10, 0, 24, hallEastGaps, C.stone, Enum.Material.Cobblestone)
+	lineFace(geo, "Z", -60, 1, -30, 30, 0, 24, hallWestGaps, F.hall)
+	lineFace(geo, "X", -30, 1, -60, -10, 0, 24, hallNorthGaps, F.hall)
+	lineFace(geo, "X", 30, -1, -60, -10, 0, 24, hallSouthGaps, F.hall)
+	lineFace(geo, "Z", -10, -1, -30, 30, 0, 24, hallEastGaps, F.hall)
 
 	-- Grand stair: the upper floor is for later stories, so it's blocked.
 	for i = 0, 11 do
@@ -4316,21 +5486,36 @@ function Greybox.build(opts: { replace: boolean? }?): Model
 		LockedText = "Locked. The first crew must have had the key.",
 	})
 
+	-- Shut for later stories (see docs/ASHGROVE_STORY.md).
+	door("StudyDoor", -54, -50, 0, 9, -29.5, -29.2, {
+		StartsLocked = true,
+		LockedText = "C.A. PRIVATE. Locked, and the lock is newer than the door.",
+	})
+	door("UpperStair", -57, -38, 1, 3.5, 21.3, 21.6, {
+		StartsLocked = true,
+		LockedText = "The stairs are rotten through. The first crew roped them off.",
+	})
+
 	marker("Spawn_Van", Vector3.new(-124, 3, 0), Vector3.new(0, 3, 0))
 	marker("Spawn_HallCamp", Vector3.new(-36, 3, 4), Vector3.new(0, 3, 4))
 
 	------------------------------------------------------------------ gallery
 	slab(geo, "GalleryFloor", -10, 110, -30, -8, 0, C.floor, Enum.Material.WoodPlanks)
-	box(geo, "GalleryCeiling", -10, 110, 20, 21, -30, -8, C.plaster)
+	box(geo, "GalleryCeiling", -10, 110, 20, 21, -30, -8, C.cornice, Enum.Material.Plaster)
 	local galleryWindows = {}
 	for _, wx in { 5, 20, 35, 50, 65, 80, 95 } do
 		table.insert(galleryWindows, { at = wx, width = 6, height = 13, sill = 3, glass = true })
 	end
-	wall(geo, "GalleryNorth", "X", -10, 110, -30, 0, 20, galleryWindows, C.stone, Enum.Material.Cobblestone)
-	wall(geo, "GallerySouth", "X", -10, 110, -8, 0, 20, {}, C.wallpaper)
-	wall(geo, "GalleryEast", "Z", -30, -8, 110, 0, 20, {
+	local galleryEastGaps = {
 		{ at = -19, width = 6, height = 13, sill = 3, glass = true },
-	}, C.stone, Enum.Material.Cobblestone)
+	}
+	wall(geo, "GalleryNorth", "X", -10, 110, -30, 0, 20, galleryWindows, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "GallerySouth", "X", -10, 110, -8, 0, 20, {}, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "GalleryEast", "Z", -30, -8, 110, 0, 20, galleryEastGaps, C.stone, Enum.Material.Cobblestone)
+	lineFace(geo, "X", -30, 1, -10, 110, 0, 20, galleryWindows, F.gallery)
+	lineFace(geo, "X", -8, -1, -10, 110, 0, 20, {}, F.gallery)
+	lineFace(geo, "Z", 110, -1, -30, -8, 0, 20, galleryEastGaps, F.gallery)
+	lineFace(geo, "Z", -10, 1, -30, -8, 0, 20, hallEastGaps, F.gallery)
 
 	-- Portraits of the objects' previous owners, mostly under dust sheets.
 	-- Two are torn open at head height: the Dullahan studies faces.
@@ -4387,26 +5572,47 @@ function Greybox.build(opts: { replace: boolean? }?): Model
 	slab(geo, "SculleryFloor", 58, 60, 24, 30, 0, C.flag, Enum.Material.Slate)
 	slab(geo, "HousekeeperFloor", 60, 85, 14, 30, 0, C.floor, Enum.Material.WoodPlanks)
 	slab(geo, "ServantsHallFloor", 85, 110, 14, 30, 0, C.floor, Enum.Material.WoodPlanks)
-	box(geo, "WingCeiling", -10, 110, 12, 13, 8, 30, C.plaster)
+	box(geo, "WingCeiling", -10, 110, 12, 13, 8, 30, C.limewashDirty, Enum.Material.Plaster)
 
-	wall(geo, "CorridorNorth", "X", -10, 110, 8, 0, 12, {}, C.plaster)
-	wall(geo, "CorridorSouth", "X", -10, 110, 14, 0, 12, {
+	local corridorSouthGaps = {
 		{ at = 10, width = 5, height = 9 },
 		{ at = 45, width = 5, height = 9 },
 		{ at = 72, width = 4, height = 9 },
 		{ at = 97, width = 5, height = 9 },
-	}, C.plaster)
-	wall(geo, "WingSouth", "X", -10, 110, 30, 0, 12, {
+	}
+	local wingSouthGaps = {
 		{ at = 0, width = 4, height = 4, sill = 4, glass = true },
 		{ at = 20, width = 4, height = 4, sill = 4, glass = true },
 		{ at = 72, width = 3, height = 4, sill = 4 }, -- the rite window fills this
 		{ at = 97, width = 4, height = 4, sill = 4, glass = true },
-	}, C.stone, Enum.Material.Cobblestone)
-	wall(geo, "KitchenScullery", "Z", 14, 30, 30, 0, 12, {}, C.plaster)
-	wall(geo, "ScullerySide", "Z", 14, 30, 60, 0, 12, {}, C.plaster)
-	wall(geo, "HousekeeperSide", "Z", 14, 30, 85, 0, 12, {}, C.plaster)
+	}
+	wall(geo, "CorridorNorth", "X", -10, 110, 8, 0, 12, {}, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "CorridorSouth", "X", -10, 110, 14, 0, 12, corridorSouthGaps, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "WingSouth", "X", -10, 110, 30, 0, 12, wingSouthGaps, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "KitchenScullery", "Z", 14, 30, 30, 0, 12, {}, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "ScullerySide", "Z", 14, 30, 60, 0, 12, {}, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "HousekeeperSide", "Z", 14, 30, 85, 0, 12, {}, C.stone, Enum.Material.Cobblestone)
 	wall(geo, "WingEast", "Z", 8, 30, 110, 0, 12, {}, C.stone, Enum.Material.Cobblestone)
 	wall(geo, "CourtyardEast", "Z", -8, 8, 110, 0, 12, {}, C.stone, Enum.Material.Cobblestone)
+
+	-- Corridor.
+	lineFace(geo, "X", 8, 1, -10, 110, 0, 12, {}, F.servants)
+	lineFace(geo, "X", 14, -1, -10, 110, 0, 12, corridorSouthGaps, F.servants)
+	lineFace(geo, "Z", -10, 1, 8, 14, 0, 12, hallEastGaps, F.servants)
+	lineFace(geo, "Z", 110, -1, 8, 14, 0, 12, {}, F.servants)
+	-- The rooms off it: { x1, x2, finish }.
+	for _, room in {
+		{ -10, 30, F.servants }, -- kitchen
+		{ 30, 60, F.servants }, -- scullery
+		{ 60, 85, F.housekeeper },
+		{ 85, 110, F.servants }, -- servants' hall
+	} do
+		local x1, x2, finish = room[1], room[2], room[3]
+		lineFace(geo, "X", 14, 1, x1, x2, 0, 12, corridorSouthGaps, finish)
+		lineFace(geo, "X", 30, -1, x1, x2, 0, 12, wingSouthGaps, finish)
+		lineFace(geo, "Z", x1, 1, 14, 30, 0, 12, if x1 == -10 then hallEastGaps else {}, finish)
+		lineFace(geo, "Z", x2, -1, 14, 30, 0, 12, {}, finish)
+	end
 
 	-- Bell board, west end of the corridor.
 	local bellBoard = Instance.new("Model")
@@ -4514,10 +5720,10 @@ function Greybox.build(opts: { replace: boolean? }?): Model
 
 	------------------------------------------------------------------ vault
 	slab(geo, "VaultFloor", 20, 80, -20, 30, -16, C.stone, Enum.Material.Slate)
-	wall(geo, "VaultNorth", "X", 20, 80, -20, -16, 15, {}, C.stone, Enum.Material.Cobblestone)
-	wall(geo, "VaultSouth", "X", 20, 80, 30, -16, 15, {}, C.stone, Enum.Material.Cobblestone)
-	wall(geo, "VaultWest", "Z", -20, 30, 20, -16, 15, {}, C.stone, Enum.Material.Cobblestone)
-	wall(geo, "VaultEast", "Z", -20, 30, 80, -16, 15, {}, C.stone, Enum.Material.Cobblestone)
+	wall(geo, "VaultNorth", "X", 20, 80, -20, -16, 15, {}, C.brick, Enum.Material.Brick)
+	wall(geo, "VaultSouth", "X", 20, 80, 30, -16, 15, {}, C.brick, Enum.Material.Brick)
+	wall(geo, "VaultWest", "Z", -20, 30, 20, -16, 15, {}, C.brick, Enum.Material.Brick)
+	wall(geo, "VaultEast", "Z", -20, 30, 80, -16, 15, {}, C.brick, Enum.Material.Brick)
 
 	-- Iron cages for the worst of the collection.
 	for _, cx in { 30, 42, 66, 76 } do
@@ -4571,290 +5777,14 @@ function Greybox.build(opts: { replace: boolean? }?): Model
 	zone("ServantsHall", 85, 110, -1, 13, 14, 30, { Wing = "ServantsWing", Room = "ServantsHall", Priority = 2 })
 	zone("Vault", 20, 80, -17, -1, -20, 30, { Wing = "Vault", Room = "Vault", Priority = 3 })
 
+	Dressing.dress(root)
+
 	root.WorldPivot = CFrame.new(0, 0, 0)
 	root.Parent = workspace
 	return root
 end
 
-return Greybox
-]=] },
-	{ service = {"ServerScriptService"}, path = {"Ashgrove", "Gun"}, class = "ModuleScript", source = [=[
---[[
-	Gun (server): the pistol. Ammo, reloads and hits are decided here; the
-	client only reports where it aimed (sway included) and draws effects.
-
-	- Small magazine, slow reload (Config.pistol.reloadTime) that can't be
-	  cancelled. The flashlight is forced off while reloading.
-	- Gunshots are loud: a Noise every entity in range hears.
-	- Can't shoot while down, taken, or committed to an action.
-
-	Player attributes: Ammo, Reserve, Reloading, ReloadEnds.
-]]
-
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local Shared = ReplicatedStorage:WaitForChild("Ashgrove")
-local Audio = require(Shared:WaitForChild("Audio"))
-local Config = require(Shared:WaitForChild("Config"))
-local Net = require(Shared:WaitForChild("Net"))
-
-local Crew = require(script.Parent.Crew)
-local Map = require(script.Parent.Map)
-local Noise = require(script.Parent.Noise)
-local Registry = require(script.Parent.Entities.Registry)
-
-local cfg = Config.pistol
-
-local Gun = {}
-
-type GunState = {
-	mag: number,
-	reserve: number,
-	reloading: boolean,
-	reloadToken: {}?,
-	lastShot: number,
-	saved: { mag: number, reserve: number }?,
-}
-
-local states: { [Player]: GunState } = {}
-
-local function publish(player: Player)
-	local s = states[player]
-	if s then
-		player:SetAttribute("Ammo", s.mag)
-		player:SetAttribute("Reserve", s.reserve)
-		player:SetAttribute("Reloading", s.reloading)
-	end
-end
-
-local function makeTool(): Tool
-	local tool = Instance.new("Tool")
-	tool.Name = "Pistol"
-	tool.CanBeDropped = false
-	tool.RequiresHandle = true
-	tool.ToolTip = "Pistol"
-	tool.Grip = CFrame.new(0, -0.3, 0.2)
-	local handle = Instance.new("Part")
-	handle.Name = "Handle"
-	handle.Size = Vector3.new(0.35, 0.9, 1.5)
-	handle.Color = Color3.fromRGB(34, 34, 36)
-	handle.Material = Enum.Material.Metal
-	handle.CanCollide = false
-	handle.Massless = true
-	handle.Parent = tool
-	local muzzle = Instance.new("Attachment")
-	muzzle.Name = "Muzzle"
-	muzzle.Position = Vector3.new(0, 0.25, -0.8)
-	muzzle.Parent = handle
-	local flash = Instance.new("PointLight")
-	flash.Name = "MuzzleFlash"
-	flash.Range = 14
-	flash.Brightness = 4
-	flash.Color = Color3.fromRGB(255, 200, 140)
-	flash.Enabled = false
-	flash.Parent = muzzle
-	return tool
-end
-
-local function giveTool(player: Player, character: Model)
-	local backpack = player:WaitForChild("Backpack")
-	for _, container in { backpack, character } do
-		for _, old in container:GetChildren() do
-			if old.Name == "Pistol" and old:IsA("Tool") then
-				old:Destroy()
-			end
-		end
-	end
-	local tool = makeTool()
-	tool.Parent = backpack
-	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
-	task.defer(function()
-		if tool.Parent == backpack then
-			humanoid:EquipTool(tool)
-		end
-	end)
-end
-
-local function equipped(player: Player): Tool?
-	local character = player.Character
-	local tool = character and character:FindFirstChild("Pistol")
-	return if tool and tool:IsA("Tool") then tool else nil
-end
-
-local function fire(player: Player, origin: any, direction: any)
-	local s = states[player]
-	if not s or typeof(origin) ~= "Vector3" or typeof(direction) ~= "Vector3" then
-		return
-	end
-	if direction.Magnitude < 0.5 or direction.Magnitude ~= direction.Magnitude then
-		return
-	end
-	if not Crew.isActive(player) or Crew.isCommitting(player) or s.reloading then
-		return
-	end
-	local now = os.clock()
-	if now - s.lastShot < cfg.fireInterval * 0.9 then
-		return
-	end
-	local tool = equipped(player)
-	local head = Crew.head(player)
-	if not tool or not head or (origin - head.Position).Magnitude > cfg.maxOriginOffset then
-		return
-	end
-	if s.mag <= 0 then
-		local handle = tool:FindFirstChild("Handle")
-		if handle then
-			Audio.play("dryFire", handle, 0.6)
-		end
-		return
-	end
-	s.lastShot = now
-	s.mag -= 1
-	publish(player)
-
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	local ignore: { Instance } = { Map.interact("Glows") }
-	for _, other in Players:GetPlayers() do
-		if other.Character then
-			table.insert(ignore, other.Character)
-		end
-	end
-	params.FilterDescendantsInstances = ignore
-	local dir = direction.Unit
-	local result = workspace:Raycast(origin, dir * cfg.range, params)
-	local hitPosition = if result then result.Position else origin + dir * cfg.range
-	local kind = if result then "world" else "none"
-
-	local handle = tool:FindFirstChild("Handle") :: BasePart?
-	if handle then
-		Audio.play("gunshot", handle, 1, 300)
-	end
-	Noise.emit(origin, cfg.gunshotNoise, "gunshot", player)
-
-	if result then
-		local entity = Registry.fromPart(result.Instance)
-		if entity then
-			kind = "entity"
-			entity:shot(result.Instance :: BasePart, player, result.Position)
-		end
-	end
-	Net.event("ShotFx"):FireAllClients(player, origin, hitPosition, kind)
-end
-
-local function reload(player: Player)
-	local s = states[player]
-	if not s or s.reloading or s.mag >= cfg.magazine or s.reserve <= 0 then
-		return
-	end
-	if not Crew.isActive(player) or Crew.isCommitting(player) or not equipped(player) then
-		return
-	end
-	local token = {}
-	s.reloading = true
-	s.reloadToken = token
-	player:SetAttribute("ReloadEnds", workspace:GetServerTimeNow() + cfg.reloadTime)
-	publish(player)
-	Crew.suppressFlashlight(player, cfg.reloadTime)
-	local tool = equipped(player)
-	local handle = tool and tool:FindFirstChild("Handle")
-	if handle then
-		Audio.play("reload", handle, 0.7)
-	end
-	task.delay(cfg.reloadTime, function()
-		if s.reloadToken ~= token then
-			return
-		end
-		local moved = math.min(cfg.magazine - s.mag, s.reserve)
-		s.mag += moved
-		s.reserve -= moved
-		s.reloading = false
-		s.reloadToken = nil
-		publish(player)
-	end)
-end
-
--- Adds reserve ammo. Returns how many rounds were taken (0 if full).
-function Gun.addAmmo(player: Player, amount: number): number
-	local s = states[player]
-	if not s then
-		return 0
-	end
-	local taken = math.min(amount, cfg.maxReserve - s.reserve)
-	if taken <= 0 then
-		return 0
-	end
-	s.reserve += taken
-	publish(player)
-	return taken
-end
-
-function Gun.refill(player: Player)
-	local s = states[player]
-	if s then
-		s.mag = cfg.magazine
-		s.reserve = cfg.maxReserve
-		publish(player)
-	end
-end
-
--- Checkpoints: remember ammo now; after a wipe, restore it (never less
--- than one full magazine).
-function Gun.saveAll()
-	for _, s in states do
-		s.saved = { mag = s.mag, reserve = s.reserve }
-	end
-end
-
-function Gun.restoreAll()
-	for player, s in states do
-		local saved = s.saved or { mag = cfg.magazine, reserve = cfg.startReserve }
-		s.mag = math.max(saved.mag, cfg.magazine)
-		s.reserve = saved.reserve
-		s.reloading = false
-		s.reloadToken = nil
-		publish(player)
-	end
-end
-
--- Start before Crew, so the first characterReady is heard.
-function Gun.start()
-	local function onPlayer(player: Player)
-		states[player] = {
-			mag = cfg.magazine,
-			reserve = cfg.startReserve,
-			reloading = false,
-			reloadToken = nil,
-			lastShot = 0,
-			saved = nil,
-		}
-		publish(player)
-	end
-	Players.PlayerAdded:Connect(onPlayer)
-	for _, player in Players:GetPlayers() do
-		if not states[player] then
-			onPlayer(player)
-		end
-	end
-	Players.PlayerRemoving:Connect(function(player)
-		states[player] = nil
-	end)
-
-	Crew.characterReady:Connect(function(player: Player, character: Model)
-		local s = states[player]
-		if s then
-			s.reloading = false
-			s.reloadToken = nil
-			publish(player)
-		end
-		giveTool(player, character)
-	end)
-	Net.event("Fire").OnServerEvent:Connect(fire)
-	Net.event("Reload").OnServerEvent:Connect(reload)
-end
-
-return Gun
+return House
 ]=] },
 	{ service = {"ServerScriptService"}, path = {"Ashgrove", "Light"}, class = "ModuleScript", source = [=[
 --[[
@@ -5111,6 +6041,388 @@ end
 
 return Map
 ]=] },
+	{ service = {"ServerScriptService"}, path = {"Ashgrove", "Models"}, class = "ModuleScript", source = [=[
+--[[
+	Models: uses your monster models when they exist, the greybox bodies
+	when they don't.
+
+	WHERE TO PUT YOUR MODELS. Any of these work (checked in this order):
+	  ServerStorage.AshgroveModels.<name>
+	  ReplicatedStorage.AshgroveModels.<name>
+	  anywhere in Workspace or ServerStorage
+	with <name> one of Config.models[id].names (case, spaces, "_" and "-"
+	ignored), e.g. "Dullahan", "AH_Ent_Dullahan", "Banshee". A model left
+	standing in the Workspace is moved to ServerStorage.AshgroveModels when
+	the game starts, so it doesn't stand in the level in a T-pose.
+
+	WHAT A MODEL NEEDS
+	  - Rigged (Humanoid + HumanoidRootPart): used as it is. Its front must
+	    be the root's -Z (the usual Roblox export).
+	  - Not rigged (just meshes): it's carried on an invisible root and
+	    Humanoid that Ashgrove adds. Its front must face -Z.
+	  - The Dullahan's carried head: a part named Config.models.Dullahan.
+	    headPart ("CarriedHead"), or failing that any part with "head" in
+	    its name. It's what he sees through and his weak point.
+	  - Hit parts: anything with "head" in its name counts as a head hit,
+	    everything else as body, unless you set a Hitbox attribute
+	    ("Head" / "Body") yourself.
+	  - Animations: optional ids in Config.models[id].animations.
+]]
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
+
+local Config = require(ReplicatedStorage:WaitForChild("Ashgrove"):WaitForChild("Config"))
+
+local Models = {}
+
+local cache: { [string]: Model | false } = {}
+
+local function normal(name: string): string
+	return string.lower((string.gsub(name, "[%s_%-]", "")))
+end
+
+local function storageFolder(): Folder
+	local f = ServerStorage:FindFirstChild("AshgroveModels")
+	if not f then
+		f = Instance.new("Folder")
+		f.Name = "AshgroveModels"
+		f.Parent = ServerStorage
+	end
+	return f :: Folder
+end
+
+local function isExcluded(inst: Instance): boolean
+	local house = workspace:FindFirstChild("AshgroveHouse")
+	if house and inst:IsDescendantOf(house) then
+		return true
+	end
+	for _, player in game:GetService("Players"):GetPlayers() do
+		if player.Character and inst:IsDescendantOf(player.Character) then
+			return true
+		end
+	end
+	return false
+end
+
+-- The template model for an entity id, or nil.
+function Models.find(id: string): Model?
+	local cached = cache[id]
+	if cached ~= nil then
+		return if cached then cached else nil
+	end
+	local cfg = (Config.models :: any)[id]
+	if not cfg then
+		cache[id] = false
+		return nil
+	end
+	local wanted: { [string]: boolean } = {}
+	for _, name in cfg.names do
+		wanted[normal(name)] = true
+	end
+	local function search(list: { Instance }): Model?
+		for _, inst in list do
+			if inst:IsA("Model") and wanted[normal(inst.Name)] and not isExcluded(inst) then
+				return inst
+			end
+		end
+		return nil
+	end
+	local found: Model? = nil
+	for _, holder in { ServerStorage, ReplicatedStorage } do
+		local folder = holder:FindFirstChild("AshgroveModels")
+		if folder and not found then
+			found = search(folder:GetChildren())
+		end
+	end
+	found = found or search(workspace:GetDescendants()) or search(ServerStorage:GetDescendants())
+	if found and found:IsDescendantOf(workspace) then
+		found.Parent = storageFolder()
+	end
+	cache[id] = found or false
+	return found
+end
+
+-- Look for every configured model now (moves any out of the Workspace).
+function Models.collect()
+	for id in Config.models :: any do
+		local found = Models.find(id)
+		if found then
+			print(`[Ashgrove] Using your model "{found.Name}" for {id}.`)
+		end
+	end
+end
+
+function Models.configureHumanoid(humanoid: Humanoid)
+	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+	humanoid.BreakJointsOnDeath = false
+	humanoid.RequiresNeck = false
+	humanoid.MaxHealth = 1e6
+	humanoid.Health = 1e6
+	humanoid.UseJumpPower = true
+	humanoid.JumpPower = 0
+	humanoid.WalkSpeed = 0
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing, false)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+end
+
+local function isHeadName(name: string): boolean
+	return string.find(string.lower(name), "head", 1, true) ~= nil
+end
+
+local function findHead(model: Model, preferred: string?): BasePart?
+	if preferred then
+		local exact = model:FindFirstChild(preferred, true)
+		if exact and exact:IsA("BasePart") then
+			return exact
+		end
+	end
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") and isHeadName(p.Name) then
+			return p
+		end
+	end
+	return nil
+end
+
+-- A spawnable copy of your creature model, ready for the AI. Returns nil
+-- when there's no model for this id.
+function Models.creature(id: string): (Model?, BasePart?, Humanoid?, BasePart?)
+	local template = Models.find(id)
+	if not template then
+		return nil, nil, nil, nil
+	end
+	local cfg = (Config.models :: any)[id]
+	local model = template:Clone()
+	model.Name = id
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	local root = (model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart) :: BasePart?
+
+	if humanoid and root then
+		for _, p in model:GetDescendants() do
+			if p:IsA("BasePart") then
+				p.Anchored = false
+			end
+		end
+	else
+		-- Not rigged: carry the meshes on a root and a Humanoid of our own.
+		local box, size = model:GetBoundingBox()
+		local newRoot = Instance.new("Part")
+		newRoot.Name = "HumanoidRootPart"
+		newRoot.Size = Vector3.new(2, 2, 1)
+		newRoot.Transparency = 1
+		newRoot.CanCollide = true
+		newRoot.CFrame = CFrame.new(box.Position) * model:GetPivot().Rotation
+		for _, p in model:GetDescendants() do
+			if p:IsA("BasePart") then
+				p.Anchored = false
+				p.CanCollide = false
+				p.Massless = true
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = newRoot
+				weld.Part1 = p
+				weld.Parent = p
+			end
+		end
+		newRoot.Parent = model
+		model.PrimaryPart = newRoot
+		local newHumanoid = Instance.new("Humanoid")
+		newHumanoid.RigType = Enum.HumanoidRigType.R15
+		newHumanoid.HipHeight = math.max(0.2, size.Y / 2 - newRoot.Size.Y / 2)
+		newHumanoid.Parent = model
+		humanoid, root = newHumanoid, newRoot
+	end
+	local finalRoot = root :: BasePart
+	model.PrimaryPart = finalRoot
+	finalRoot:SetAttribute("Hitbox", "Body")
+	Models.configureHumanoid(humanoid :: Humanoid)
+
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") and p:GetAttribute("Hitbox") == nil then
+			p:SetAttribute("Hitbox", if isHeadName(p.Name) then "Head" else "Body")
+		end
+	end
+	return model, finalRoot, humanoid, findHead(model, cfg and cfg.headPart)
+end
+
+-- The joint that holds a part, made turnable and detachable. Converts a
+-- WeldConstraint into a Weld; makes one to the root if there's none.
+function Models.jointFor(model: Model, root: BasePart, part: BasePart): JointInstance
+	for _, d in model:GetDescendants() do
+		if d:IsA("JointInstance") and (d.Part1 == part or d.Part0 == part) then
+			return d
+		end
+	end
+	for _, d in model:GetDescendants() do
+		if d:IsA("WeldConstraint") and (d.Part0 == part or d.Part1 == part) then
+			local other = if d.Part0 == part then d.Part1 else d.Part0
+			if other then
+				local weld = Instance.new("Weld")
+				weld.Part0 = other
+				weld.Part1 = part
+				weld.C0 = other.CFrame:Inverse() * part.CFrame
+				d:Destroy()
+				weld.Parent = part
+				return weld
+			end
+		end
+	end
+	local weld = Instance.new("Weld")
+	weld.Part0 = root
+	weld.Part1 = part
+	weld.C0 = root.CFrame:Inverse() * part.CFrame
+	weld.Parent = part
+	return weld
+end
+
+-- Your Banshee, prepared to be shown and hidden: an invisible "Root" at
+-- her feet as the pivot. Returns the model, the part used as her face
+-- (torch-on-face check) and the part her keen and light come from.
+function Models.banshee(): (Model?, BasePart?, BasePart?)
+	local template = Models.find("Banshee")
+	if not template then
+		return nil, nil, nil
+	end
+	local model = template:Clone()
+	model.Name = "Banshee"
+	local box, size = model:GetBoundingBox()
+	local rotation = model:GetPivot().Rotation
+	local hrp = model:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local jointed = (model:FindFirstChildOfClass("Humanoid") or model:FindFirstChildOfClass("AnimationController")) ~= nil
+		and model:FindFirstChildWhichIsA("Motor6D", true) ~= nil
+
+	local face, chest, highest = nil, nil, nil
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.CanCollide = false
+			p.CanQuery = false
+			p.CanTouch = false
+			p.Anchored = not jointed or p == hrp
+			p:SetAttribute("BaseTransparency", p.Transparency)
+			local lower = string.lower(p.Name)
+			if not face and (string.find(lower, "face", 1, true) or string.find(lower, "head", 1, true)) then
+				face = p
+			end
+			if not chest and (lower == "chest" or lower == "uppertorso" or lower == "torso") then
+				chest = p
+			end
+			if not highest or p.Position.Y > highest.Position.Y then
+				highest = p
+			end
+		end
+	end
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+		humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+	end
+
+	local root = Instance.new("Part")
+	root.Name = "Root"
+	root.Anchored = true
+	root.CanCollide = false
+	root.CanQuery = false
+	root.CanTouch = false
+	root.Transparency = 1
+	root.Size = Vector3.one * 0.5
+	root.CFrame = CFrame.new(box.X, box.Y - size.Y / 2, box.Z) * rotation
+	root.Parent = model
+	model.PrimaryPart = root
+	return model, face or highest, chest or root
+end
+
+------------------------------------------------------------------ animation
+
+export type Animations = {
+	loop: (name: string) -> (),
+	action: (name: string) -> (),
+}
+
+local FALLBACK = {
+	run = "walk",
+	blind = "idle",
+	keen = "idle",
+	mourn = "idle",
+}
+
+local NO_ANIMATIONS: Animations = {
+	loop = function() end,
+	action = function() end,
+}
+
+-- Plays the ids in Config.models[id].animations on a model. `loop` keeps
+-- one looping animation going (idle, walk, run, keen...); `action` plays
+-- a one-off on top (attack). Missing ids are ignored.
+function Models.animations(model: Model, id: string): Animations
+	local cfg = (Config.models :: any)[id]
+	local ids = cfg and cfg.animations
+	local controller = model:FindFirstChildOfClass("Humanoid") or model:FindFirstChildOfClass("AnimationController")
+	if not ids or not controller then
+		return NO_ANIMATIONS
+	end
+	local animator = controller:FindFirstChildOfClass("Animator")
+	if not animator then
+		animator = Instance.new("Animator")
+		animator.Parent = controller
+	end
+	local tracks: { [string]: AnimationTrack } = {}
+	local function track(name: string): AnimationTrack?
+		if tracks[name] then
+			return tracks[name]
+		end
+		local animId = ids[name]
+		if not animId or animId == "" then
+			return nil
+		end
+		local animation = Instance.new("Animation")
+		animation.AnimationId = animId
+		local ok, loaded = pcall(function()
+			return (animator :: Animator):LoadAnimation(animation)
+		end)
+		if ok and loaded then
+			tracks[name] = loaded
+			return loaded
+		end
+		return nil
+	end
+	local current: string? = nil
+	return {
+		loop = function(wanted: string)
+			-- A missing animation falls back to a close one (run -> walk).
+			local name = wanted
+			if not track(name) and FALLBACK[name] then
+				name = FALLBACK[name]
+			end
+			if current == name then
+				return
+			end
+			local nextTrack = track(name)
+			if not nextTrack then
+				return
+			end
+			if current and tracks[current] then
+				tracks[current]:Stop(0.25)
+			end
+			current = name
+			nextTrack.Looped = true
+			nextTrack:Play(0.25)
+		end,
+		action = function(name: string)
+			local t = track(name)
+			if t then
+				t.Looped = false
+				t:Play(0.1)
+			end
+		end,
+	}
+end
+
+return Models
+]=] },
 	{ service = {"ServerScriptService"}, path = {"Ashgrove", "Noise"}, class = "ModuleScript", source = [=[
 --[[
 	Noise: anything an entity could hear. Footsteps, gunshots, a dropped
@@ -5143,7 +6455,9 @@ return Noise
 ]=] },
 	{ service = {"ServerScriptService"}, path = {"Ashgrove", "Pickups"}, class = "ModuleScript", source = [=[
 --[[
-	Pickups: ammo, batteries and the gold ward.
+	Pickups: ammo, batteries and the gold ward. Ammo goes to YOUR gun
+	through Hooks.giveAmmo; until that's wired (Hooks.ammoPickups), ammo
+	pickups stay out of the map.
 
 	Each pickup part has Kind ("ammo" | "battery" | "gold"), Group and
 	Always. Always pickups are always there. For the rest, each group puts
@@ -5160,14 +6474,14 @@ local Audio = require(Shared:WaitForChild("Audio"))
 local Config = require(Shared:WaitForChild("Config"))
 
 local Crew = require(script.Parent.Crew)
-local Gun = require(script.Parent.Gun)
+local Hooks = require(script.Parent.Hooks)
 local Map = require(script.Parent.Map)
 local Say = require(script.Parent.Say)
 
 local Pickups = {}
 
 local LABELS = {
-	ammo = { action = "Take", object = "Pistol rounds" },
+	ammo = { action = "Take", object = "Ammunition" },
 	battery = { action = "Take", object = "Torch batteries" },
 	gold = { action = "Take", object = "Gold sovereign" },
 }
@@ -5184,18 +6498,22 @@ local function show(p: BasePart, visible: boolean)
 	p:SetAttribute("Live", visible)
 end
 
+-- Ammo only appears once Hooks.giveAmmo is wired to your gun.
+local function allowed(p: BasePart): boolean
+	return p:GetAttribute("Kind") ~= "ammo" or Hooks.ammoPickups == true
+end
+
 local function take(p: BasePart, player: Player)
 	if not p:GetAttribute("Live") or not Crew.isActive(player) then
 		return
 	end
 	local kind = p:GetAttribute("Kind")
 	if kind == "ammo" then
-		local taken = Gun.addAmmo(player, Config.pickups.ammoAmount)
-		if taken <= 0 then
-			Say.to(player, "Your pockets are full of rounds already.", 2, "hint")
+		if not Hooks.giveAmmo(player, Config.pickups.ammoAmount) then
+			Say.to(player, "No room for more rounds.", 2, "hint")
 			return
 		end
-		Say.to(player, `+{taken} rounds`, 2, "hint")
+		Say.to(player, `+{Config.pickups.ammoAmount} rounds`, 2, "hint")
 	elseif kind == "battery" then
 		if not Crew.addBattery(player, Config.pickups.batteryAmount) then
 			Say.to(player, "Your torch is already full.", 2, "hint")
@@ -5215,7 +6533,7 @@ function Pickups.roll()
 	local byGroup: { [string]: { BasePart } } = {}
 	for _, p in Map.interact("Pickups"):GetChildren() do
 		-- Always pickups were set out by setup (and may be taken already).
-		if p:IsA("BasePart") and not p:GetAttribute("Always") then
+		if p:IsA("BasePart") and not p:GetAttribute("Always") and allowed(p) then
 			show(p, false)
 			local group = p:GetAttribute("Group") or "Default"
 			byGroup[group] = byGroup[group] or {}
@@ -5252,7 +6570,7 @@ function Pickups.setup()
 			end
 			-- Until the run's roll (Director, once the party is in), only the
 			-- Always pickups are out.
-			show(p, p:GetAttribute("Always") == true)
+			show(p, p:GetAttribute("Always") == true and allowed(p))
 		end
 	end
 	-- If whoever had the gold leaves, it goes back in its case.
@@ -5647,6 +6965,214 @@ end
 
 return Say
 ]=] },
+	{ service = {"ServerScriptService"}, path = {"Ashgrove", "Shots"}, class = "ModuleScript", source = [=[
+--[[
+	Shots: notices YOUR gun hitting Ashgrove's monsters, without needing to
+	know how your gun works.
+
+	Three sources, combined (Config.integration.hitDetection):
+	  1. Click reports. Every left click with a tool out sends the camera's
+	     ray here. That's the gunshot NOISE (always), and the aim used to
+	     work out which body part was hit.
+	  2. Damage. Monster Humanoids have huge health; when your gun damages
+	     one, that's the confirmed hit. The part is found along the
+	     shooter's last click ray (the Dullahan's head matters), and health
+	     is topped back up straight away.
+	  3. Hooks.reportHit(player, part, position) from your gun's own code.
+	     Exact. Once it's been used, 1 and 2 stop counting hits.
+
+	In "auto" mode, if three click rays hit a monster and none of them ever
+	came with damage, your gun clearly doesn't damage Humanoids: Shots
+	switches to "click" mode by itself and says so in the Output window.
+
+	Click rays don't know about your wobble. For hits that match your
+	bullets exactly, wire Hooks.reportHit.
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Ashgrove")
+local Config = require(Shared:WaitForChild("Config"))
+local Net = require(Shared:WaitForChild("Net"))
+
+local Crew = require(script.Parent.Crew)
+local Map = require(script.Parent.Map)
+local Noise = require(script.Parent.Noise)
+local Registry = require(script.Parent.Entities.Registry)
+
+local cfg = Config.integration
+
+local Shots = {}
+
+type Click = { origin: Vector3, direction: Vector3, at: number }
+
+local mode: string = cfg.hitDetection
+local lastClick: { [Player]: Click } = {}
+local lastNoise: { [Player]: number } = {}
+local damageEverSeen = false
+local hooksUsed = false
+local undamagedClickHits = 0
+
+local function rayParams(): RaycastParams
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	local ignore: { Instance } = { Map.interact("Glows") }
+	for _, player in Players:GetPlayers() do
+		if player.Character then
+			table.insert(ignore, player.Character)
+		end
+	end
+	params.FilterDescendantsInstances = ignore
+	return params
+end
+
+-- First thing along a ray; returns the entity if it's one of ours.
+local function castFor(origin: Vector3, direction: Vector3): (any, BasePart?, Vector3?)
+	local result = workspace:Raycast(origin, direction.Unit * cfg.clickRange, rayParams())
+	if not result then
+		return nil, nil, nil
+	end
+	return Registry.fromPart(result.Instance), result.Instance :: BasePart, result.Position
+end
+
+local function apply(entity, part: BasePart, shooter: Player, position: Vector3)
+	if entity and entity.status == "active" then
+		entity:shot(part, shooter, position)
+	end
+end
+
+------------------------------------------------------------------ for Hooks
+
+function Shots.reportShot(player: Player, origin: Vector3?)
+	local now = os.clock()
+	if now - (lastNoise[player] or 0) < 0.15 then
+		return
+	end
+	lastNoise[player] = now
+	local head = Crew.head(player)
+	local at = origin or (if head then head.Position else nil)
+	if at then
+		Noise.emit(at, cfg.gunshotNoise, "gunshot", player)
+	end
+end
+
+function Shots.reportHit(player: Player, part: BasePart, position: Vector3?)
+	hooksUsed = true
+	local entity = Registry.fromPart(part)
+	if entity then
+		apply(entity, part, player, position or part.Position)
+	end
+end
+
+function Shots.reportReload(player: Player, seconds: number?)
+	local duration = seconds or cfg.reloadTorchOff
+	if duration > 0 then
+		Crew.suppressFlashlight(player, duration)
+	end
+end
+
+------------------------------------------------------------------ damage
+
+-- Entity calls this when its Humanoid loses health.
+function Shots.onDamaged(entity)
+	damageEverSeen = true
+	if hooksUsed or mode == "hooks" or mode == "click" then
+		return
+	end
+	-- Who did it: the most recent click whose ray reaches this entity.
+	local now = os.clock()
+	local bestPlayer, bestPart, bestPos, bestAt = nil, nil, nil, -math.huge
+	for player, click in lastClick do
+		if now - click.at < 0.8 and click.at > bestAt then
+			local hitEntity, part, position = castFor(click.origin, click.direction)
+			if hitEntity == entity and part then
+				bestPlayer, bestPart, bestPos, bestAt = player, part, position, click.at
+			end
+		end
+	end
+	if not bestPlayer then
+		-- Shot from an angle the click ray can't explain (your wobble): blame
+		-- the nearest player with a tool out, and call it a body hit.
+		local root = entity.root
+		local nearest, distance = nil, math.huge
+		for _, player in Players:GetPlayers() do
+			local character = player.Character
+			local r = Crew.root(player)
+			if character and r and root and character:FindFirstChildOfClass("Tool") then
+				local d = (r.Position - root.Position).Magnitude
+				if d < distance then
+					nearest, distance = player, d
+				end
+			end
+		end
+		if nearest and root then
+			apply(entity, root, nearest, root.Position)
+		end
+		return
+	end
+	apply(entity, bestPart :: BasePart, bestPlayer, bestPos :: Vector3)
+end
+
+------------------------------------------------------------------ clicks
+
+local function onClick(player: Player, origin: any, direction: any)
+	if typeof(origin) ~= "Vector3" or typeof(direction) ~= "Vector3" or direction.Magnitude < 0.5 then
+		return
+	end
+	local head = Crew.head(player)
+	if not head or (origin - head.Position).Magnitude > 10 or not Crew.isActive(player) then
+		return
+	end
+	local character = player.Character
+	if not character or not character:FindFirstChildOfClass("Tool") then
+		return
+	end
+	local now = os.clock()
+	lastClick[player] = { origin = origin, direction = direction.Unit, at = now }
+	Shots.reportShot(player, origin)
+
+	if hooksUsed or mode == "hooks" or mode == "damage" then
+		return
+	end
+	local entity, part, position = castFor(origin, direction)
+	if not entity or not part then
+		return
+	end
+	if mode == "click" then
+		apply(entity, part, player, position :: Vector3)
+		return
+	end
+	-- "auto": wait a moment to see whether the gun's own damage arrives.
+	task.delay(0.5, function()
+		if damageEverSeen or hooksUsed or mode ~= "auto" then
+			return
+		end
+		undamagedClickHits += 1
+		if undamagedClickHits >= 3 then
+			mode = "click"
+			warn("[Ashgrove] Your gun doesn't seem to damage Humanoids, so hits now come from click rays. For exact hits, call Hooks.reportHit from your gun (see ServerScriptService.Ashgrove.Hooks).")
+			apply(entity, part, player, position :: Vector3)
+		end
+	end)
+end
+
+function Shots.start()
+	Net.event("Shot").OnServerEvent:Connect(onClick)
+	Net.event("Reload").OnServerEvent:Connect(function(player)
+		local character = player.Character
+		if character and character:FindFirstChildOfClass("Tool") then
+			Shots.reportReload(player)
+		end
+	end)
+	Players.PlayerRemoving:Connect(function(player)
+		lastClick[player] = nil
+		lastNoise[player] = nil
+	end)
+end
+
+return Shots
+]=] },
 	{ service = {"ServerScriptService"}, path = {"Ashgrove", "Storm"}, class = "ModuleScript", source = [=[
 --[[
 	Storm: the night's lighting, rain and lightning, and how they change.
@@ -5733,8 +7259,62 @@ local function flash()
 	end)
 end
 
+-- Dressing's living details: failing bulbs and candles (Flicker =
+-- "bulb"), the lit attic window that sometimes goes dark (Flicker =
+-- "window"), and the lighthouse beam (Spin).
+local function animateDetails()
+	local bulbs, windows, spinners = {}, {}, {}
+	for _, d in Map.root():GetDescendants() do
+		if d:IsA("Light") then
+			local kind = d:GetAttribute("Flicker")
+			if kind == "bulb" then
+				table.insert(bulbs, { light = d, base = d.Brightness })
+			elseif kind == "window" then
+				table.insert(windows, { light = d, base = d.Brightness })
+			end
+		elseif d:IsA("BasePart") and d:GetAttribute("Spin") then
+			table.insert(spinners, d)
+		end
+	end
+	task.spawn(function()
+		while true do
+			task.wait(0.08)
+			for _, b in bulbs do
+				local r = math.random()
+				b.light.Brightness = if r < 0.06 then 0 elseif r < 0.2 then b.base * 0.4 else b.base
+			end
+		end
+	end)
+	for _, w in windows do
+		task.spawn(function()
+			while true do
+				w.light.Enabled = true
+				task.wait(20 + math.random() * 40)
+				w.light.Enabled = false
+				task.wait(4 + math.random() * 10)
+			end
+		end)
+	end
+	if #spinners > 0 then
+		task.spawn(function()
+			local angle = 0
+			while true do
+				local dt = task.wait(0.05)
+				angle += dt * 0.6
+				for _, beam in spinners do
+					local centre = beam:GetAttribute("SpinCentre")
+					if typeof(centre) == "Vector3" then
+						beam.CFrame = CFrame.new(centre) * CFrame.Angles(0, angle, 0) * CFrame.new(0, 0, -beam.Size.Z / 2)
+					end
+				end
+			end
+		end)
+	end
+end
+
 function Storm.start()
 	setupLighting()
+	animateDetails()
 	rain = Audio.loop("rain", SoundService, Config.storm.rainVolume[0])
 	task.spawn(function()
 		while true do
@@ -5793,7 +7373,7 @@ return Storm
 ]=] },
 	{ service = {"StarterPlayer", "StarterPlayerScripts"}, path = {"AshgroveClient"}, class = "LocalScript", source = [=[
 --[[
-	Ashgrove House (client entry). Starts the HUD, controls, aiming and
+	Ashgrove House (client entry). Starts the HUD, controls, the torch and
 	effects, and routes the server's one-off messages to the HUD.
 ]]
 
@@ -5801,14 +7381,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Net = require(ReplicatedStorage:WaitForChild("Ashgrove"):WaitForChild("Net"))
 
-local Aim = require(script.Aim)
 local Controls = require(script.Controls)
 local Effects = require(script.Effects)
 local Hud = require(script.Hud)
+local Torch = require(script.Torch)
 
 Hud.start()
 Controls.start(Hud)
-Aim.start(Hud)
+Torch.start()
 Effects.start(Hud)
 
 Net.event("Caption").OnClientEvent:Connect(Hud.caption)
@@ -5817,181 +7397,15 @@ Net.event("Objectives").OnClientEvent:Connect(Hud.setObjectives)
 Net.event("Chapter").OnClientEvent:Connect(Hud.chapter)
 Net.event("Screen").OnClientEvent:Connect(Hud.screen)
 ]=] },
-	{ service = {"StarterPlayer", "StarterPlayerScripts"}, path = {"AshgroveClient", "Aim"}, class = "ModuleScript", source = [=[
---[[
-	Aim: the pistol on the client. Sway, the crosshair, shooting, and the
-	player's own torch.
-
-	"Hard to aim in a hurry": the aim wanders inside a radius that's wide
-	while you move, wider when you sprint, and closes in over
-	Config.pistol.sway.settleTime once you stand still. Each shot kicks it
-	open again; holding your own torch widens it. The dot shows where the
-	shot will actually go and the ring shows the radius.
-
-	The server decides ammo and hits; this only reports the swayed aim.
-]]
-
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-
-local Shared = ReplicatedStorage:WaitForChild("Ashgrove")
-local Config = require(Shared:WaitForChild("Config"))
-local Net = require(Shared:WaitForChild("Net"))
-
-local player = Players.LocalPlayer
-local sway = Config.pistol.sway
-
-local Aim = {}
-
-local radius = sway.minDegrees
-local kick = 0
-local stillTime = 10
-local lastShot = 0
-local seedA = math.random() * 100
-local seedB = math.random() * 100 + 200
-local direction = Vector3.new(0, 0, -1)
-
-local torch: Part
-local torchLight: SpotLight
-
-local function equipped(): boolean
-	local character = player.Character
-	local tool = character and character:FindFirstChild("Pistol")
-	return tool ~= nil and tool:IsA("Tool")
-end
-
-local function canShoot(hud): boolean
-	return equipped()
-		and not hud.isNoteOpen()
-		and not player:GetAttribute("Downed")
-		and not player:GetAttribute("Taken")
-		and not player:GetAttribute("Reloading")
-		and player:GetAttribute("CommitLabel") == nil
-end
-
-local function step(hud, dt: number)
-	local camera = workspace.CurrentCamera
-	local character = player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-
-	local speed = 0
-	if root then
-		local v = root.AssemblyLinearVelocity
-		speed = Vector3.new(v.X, 0, v.Z).Magnitude
-	end
-	local moving = speed > 1
-	local sprinting = moving and player:GetAttribute("MoveMode") == "sprint" and speed > Config.player.walkSpeed + 2
-	stillTime = if moving then 0 else stillTime + dt
-
-	local target
-	if sprinting then
-		target = sway.sprintingDegrees
-	elseif moving then
-		target = sway.movingDegrees
-	else
-		local settle = math.clamp(stillTime / sway.settleTime, 0, 1)
-		target = sway.movingDegrees + (sway.minDegrees - sway.movingDegrees) * settle
-	end
-	if player:GetAttribute("LightOn") then
-		target *= sway.flashlightMultiplier
-	end
-	local rate = if target > radius then 8 else 3
-	radius += (target - radius) * math.min(1, dt * rate)
-	kick = math.max(0, kick - dt * sway.kickDegrees * 1.5)
-	local effective = radius + kick
-
-	local t = os.clock() * sway.wanderSpeed
-	local yaw = math.rad(math.clamp(math.noise(t, seedA) * 2, -1, 1) * effective)
-	local pitch = math.rad(math.clamp(math.noise(t, seedB) * 2, -1, 1) * effective)
-	direction = (camera.CFrame * CFrame.Angles(pitch, yaw, 0)).LookVector
-
-	local viewport = camera.ViewportSize
-	local screen = camera:WorldToViewportPoint(camera.CFrame.Position + direction * 50)
-	local pixelsPerRadian = (viewport.Y / 2) / math.tan(math.rad(camera.FieldOfView / 2))
-	hud.setCrosshair(Vector2.new(screen.X, screen.Y), math.tan(math.rad(effective)) * pixelsPerRadian, equipped() and not player:GetAttribute("Taken"))
-
-	-- Own torch: drawn locally so it follows the camera without lag. The
-	-- server's copy on our head (which everyone else sees) is hidden here.
-	torch.CFrame = camera.CFrame * CFrame.new(0.4, -0.5, 0)
-	torchLight.Enabled = player:GetAttribute("LightOn") == true
-	local head = character and character:FindFirstChild("Head")
-	local attachment = head and head:FindFirstChild("AshFlashlight")
-	local serverLight = attachment and attachment:FindFirstChild("AshFlashlight")
-	if serverLight and serverLight:IsA("SpotLight") then
-		serverLight.Enabled = false
-	end
-end
-
-local function fire(hud)
-	if not canShoot(hud) then
-		return
-	end
-	local now = os.clock()
-	if now - lastShot < Config.pistol.fireInterval then
-		return
-	end
-	lastShot = now
-	if (player:GetAttribute("Ammo") or 0) > 0 then
-		kick += sway.kickDegrees
-	end
-	-- An empty gun still reports, so the server can play the dry click.
-	Net.event("Fire"):FireServer(workspace.CurrentCamera.CFrame.Position, direction)
-end
-
-function Aim.start(hud)
-	torch = Instance.new("Part")
-	torch.Name = "AshLocalTorch"
-	torch.Anchored = true
-	torch.CanCollide = false
-	torch.CanQuery = false
-	torch.CanTouch = false
-	torch.Transparency = 1
-	torch.Size = Vector3.one * 0.2
-	torchLight = Instance.new("SpotLight")
-	torchLight.Angle = Config.flashlight.angle
-	torchLight.Range = Config.flashlight.range
-	torchLight.Brightness = Config.flashlight.brightness
-	torchLight.Color = Color3.fromRGB(255, 240, 220)
-	torchLight.Shadows = true
-	torchLight.Face = Enum.NormalId.Front
-	torchLight.Enabled = false
-	torchLight.Parent = torch
-	torch.Parent = workspace.CurrentCamera
-
-	RunService:BindToRenderStep("AshgroveAim", Enum.RenderPriority.Camera.Value + 1, function(dt)
-		step(hud, dt)
-	end)
-
-	UserInputService.InputBegan:Connect(function(input, processed)
-		if processed then
-			return
-		end
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			fire(hud)
-		end
-	end)
-
-	-- Where we're looking, for the server's copy of the torch beam.
-	task.spawn(function()
-		local aimRemote = Net.unreliable("Aim")
-		while true do
-			task.wait(0.1)
-			aimRemote:FireServer(workspace.CurrentCamera.CFrame.LookVector)
-		end
-	end)
-end
-
-return Aim
-]=] },
 	{ service = {"StarterPlayer", "StarterPlayerScripts"}, path = {"AshgroveClient", "Controls"}, class = "ModuleScript", source = [=[
 --[[
 	Controls: keyboard input. Movement modes go to the server, which sets
 	speed (and the noise you make). PC keyboard and mouse only for now.
+	Shooting and reloading are your gun's; the reload key here only tells
+	Ashgrove to put the torch out while you reload.
 
-	  Shift sprint   C crouch   F torch   R reload   G gold   Q close note
-	  H help         E interact (Roblox prompts)
+	  Shift sprint   C crouch   F torch   G gold   Q close note   H help
+	  E interact (Roblox prompts)   R (Config.integration.reloadKey) reload
 	  Studio only: F6 next chapter, F7 keen here, F8 refill
 ]]
 
@@ -6042,7 +7456,7 @@ function Controls.start(hud)
 			sendMode()
 		elseif key == Enum.KeyCode.F then
 			Net.event("Flashlight"):FireServer(not player:GetAttribute("Flashlight"))
-		elseif key == Enum.KeyCode.R then
+		elseif key == Config.integration.reloadKey then
 			Net.event("Reload"):FireServer()
 		elseif key == Enum.KeyCode.G then
 			Net.event("Ward"):FireServer()
@@ -6056,7 +7470,7 @@ function Controls.start(hud)
 			elseif key == Enum.KeyCode.F7 then
 				Net.event("Debug"):FireServer("keen")
 			elseif key == Enum.KeyCode.F8 then
-				Net.event("Debug"):FireServer("refill")
+				Net.event("Debug"):FireServer("refill") -- torch battery
 			end
 		end
 	end)
@@ -6090,12 +7504,11 @@ return Controls
 ]=] },
 	{ service = {"StarterPlayer", "StarterPlayerScripts"}, path = {"AshgroveClient", "Effects"}, class = "ModuleScript", source = [=[
 --[[
-	Effects: what the server announces, drawn locally. Gunshot tracers and
-	muzzle flashes, lightning, the keen's cold grade, and the spectator
-	camera for a player the Banshee has taken.
+	Effects: what the server announces, drawn locally. Lightning, the
+	keen's cold grade, rain around you when you're outdoors, and the
+	spectator camera for a player the Banshee has taken.
 ]]
 
-local Debris = game:GetService("Debris")
 local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -6110,66 +7523,11 @@ local player = Players.LocalPlayer
 local Effects = {}
 
 local grade: ColorCorrectionEffect
+local rain: ParticleEmitter
+local keening = false
 local flashing = false
 local spectating = false
 local spectateIndex = 0
-
-local function muzzleOf(shooter: Player): Attachment?
-	local character = shooter.Character
-	local tool = character and character:FindFirstChild("Pistol")
-	local handle = tool and tool:FindFirstChild("Handle")
-	local muzzle = handle and handle:FindFirstChild("Muzzle")
-	return if muzzle and muzzle:IsA("Attachment") then muzzle else nil
-end
-
-local function shotFx(shooter: Player, origin: Vector3, hit: Vector3, kind: string)
-	local muzzle = muzzleOf(shooter)
-	local from = if muzzle then muzzle.WorldPosition else origin
-	if shooter == player then
-		-- Our own camera is the origin; start the tracer just ahead of it.
-		from = origin + (hit - origin).Unit * 1.5 + Vector3.new(0, -0.3, 0)
-	end
-	local length = (hit - from).Magnitude
-	if length > 0.5 then
-		local tracer = Instance.new("Part")
-		tracer.Anchored = true
-		tracer.CanCollide = false
-		tracer.CanQuery = false
-		tracer.CanTouch = false
-		tracer.Material = Enum.Material.Neon
-		tracer.Color = Color3.fromRGB(255, 220, 170)
-		tracer.Size = Vector3.new(0.05, 0.05, length)
-		tracer.CFrame = CFrame.lookAt(from, hit) * CFrame.new(0, 0, -length / 2)
-		tracer.Transparency = 0.3
-		tracer.Parent = workspace.CurrentCamera
-		TweenService:Create(tracer, TweenInfo.new(0.08), { Transparency = 1 }):Play()
-		Debris:AddItem(tracer, 0.1)
-	end
-	if muzzle then
-		local light = muzzle:FindFirstChild("MuzzleFlash")
-		if light and light:IsA("PointLight") then
-			light.Enabled = true
-			task.delay(0.05, function()
-				light.Enabled = false
-			end)
-		end
-	end
-	if kind ~= "none" then
-		local spark = Instance.new("Part")
-		spark.Anchored = true
-		spark.CanCollide = false
-		spark.CanQuery = false
-		spark.CanTouch = false
-		spark.Material = Enum.Material.Neon
-		spark.Color = if kind == "entity" then Color3.fromRGB(200, 60, 50) else Color3.fromRGB(255, 210, 150)
-		spark.Shape = Enum.PartType.Ball
-		spark.Size = Vector3.one * 0.3
-		spark.Position = hit
-		spark.Parent = workspace.CurrentCamera
-		TweenService:Create(spark, TweenInfo.new(0.15), { Transparency = 1, Size = Vector3.one * 0.05 }):Play()
-		Debris:AddItem(spark, 0.2)
-	end
-end
 
 local function lightning()
 	if flashing then
@@ -6199,7 +7557,52 @@ local function lightning()
 	flashing = false
 end
 
+-- Rain falls around the camera when there's open sky above it. It stops
+-- while she keens, with the storm.
+local function startRain()
+	local cloud = Instance.new("Part")
+	cloud.Name = "AshgroveRain"
+	cloud.Anchored = true
+	cloud.CanCollide = false
+	cloud.CanQuery = false
+	cloud.CanTouch = false
+	cloud.Transparency = 1
+	cloud.Size = Vector3.new(70, 1, 70)
+	rain = Instance.new("ParticleEmitter")
+	rain.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	rain.EmissionDirection = Enum.NormalId.Bottom
+	rain.Rate = 700
+	rain.Lifetime = NumberRange.new(0.5, 0.7)
+	rain.Speed = NumberRange.new(90, 110)
+	rain.Size = NumberSequence.new(0.12)
+	rain.Squash = NumberSequence.new(3)
+	rain.Transparency = NumberSequence.new(0.45)
+	rain.Color = ColorSequence.new(Color3.fromRGB(170, 185, 200))
+	rain.LightInfluence = 1
+	rain.Parent = cloud
+	cloud.Parent = workspace.CurrentCamera
+
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	task.spawn(function()
+		while true do
+			task.wait(0.3)
+			local camera = workspace.CurrentCamera
+			if cloud.Parent ~= camera then
+				cloud.Parent = camera
+			end
+			local at = camera.CFrame.Position
+			cloud.CFrame = CFrame.new(at + Vector3.new(0, 35, 0))
+			local character = player.Character
+			params.FilterDescendantsInstances = if character then { character, cloud } else { cloud }
+			local roof = workspace:Raycast(at, Vector3.new(0, 120, 0), params)
+			rain.Enabled = roof == nil and not keening
+		end
+	end)
+end
+
 local function keen(state: string)
+	keening = state == "start"
 	local goal = if state == "start"
 		then { TintColor = Color3.fromRGB(196, 214, 214), Saturation = -0.55, Brightness = -0.06, Contrast = 0.12 }
 		else { TintColor = Color3.new(1, 1, 1), Saturation = 0, Brightness = 0, Contrast = 0 }
@@ -6246,8 +7649,8 @@ function Effects.start(hud)
 	grade = Instance.new("ColorCorrectionEffect")
 	grade.Name = "AshgroveKeenGrade"
 	grade.Parent = Lighting
+	startRain()
 
-	Net.event("ShotFx").OnClientEvent:Connect(shotFx)
 	Net.event("Lightning").OnClientEvent:Connect(function()
 		task.spawn(lightning)
 	end)
@@ -6270,12 +7673,13 @@ return Effects
 --[[
 	Hud: everything on screen. Built in code so there's nothing to import.
 
-	Reads the player attributes the server sets (Ammo, Reserve, Reloading,
-	Battery, LightOn, HasGold, WardReadyAt, Commit*, Downed, Taken, Hits)
+	Reads the player attributes the server sets (Battery, LightOn, HasGold,
+	WardReadyAt, Commit*, Downed, Taken, Hits)
 	every frame, and exposes calls for one-off events (captions, notes,
 	chapter cards, keens, full-screen states).
 
 	Kept deliberately quiet: no health bar, no minimap, no timer on a keen.
+	No crosshair or ammo counter either: those are your gun's.
 ]]
 
 local Players = game:GetService("Players")
@@ -6298,10 +7702,6 @@ local BODY_FONT = Enum.Font.SourceSans
 local TITLE_FONT = Enum.Font.Garamond
 
 local gui: ScreenGui
-local dot: Frame
-local ring: Frame
-local ammoLabel: TextLabel
-local statusLabel: TextLabel
 local batteryFill: Frame
 local goldLabel: TextLabel
 local objectivesFrame: Frame
@@ -6359,45 +7759,6 @@ local function build()
 		IgnoreGuiInset = true,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 	}, player:WaitForChild("PlayerGui"))
-
-	-- Crosshair: a dot where the shot will go, and a ring showing how much
-	-- the aim is swaying. Stand still and the ring closes in.
-	ring = new("Frame", {
-		Name = "Ring",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		BackgroundTransparency = 1,
-		Size = UDim2.fromOffset(20, 20),
-	}, gui)
-	new("UICorner", { CornerRadius = UDim.new(1, 0) }, ring)
-	new("UIStroke", { Color = PAPER, Transparency = 0.65, Thickness = 1 }, ring)
-	dot = new("Frame", {
-		Name = "Dot",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		BackgroundColor3 = PAPER,
-		BackgroundTransparency = 0.1,
-		BorderSizePixel = 0,
-		Size = UDim2.fromOffset(4, 4),
-	}, gui)
-	new("UICorner", { CornerRadius = UDim.new(1, 0) }, dot)
-
-	ammoLabel = text({
-		Name = "Ammo",
-		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, -28, 1, -28),
-		Size = UDim2.fromOffset(200, 34),
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextSize = 28,
-		Font = TITLE_FONT,
-	}, gui)
-	statusLabel = text({
-		Name = "Status",
-		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, -28, 1, -62),
-		Size = UDim2.fromOffset(240, 22),
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextColor3 = DIM,
-		TextSize = 18,
-	}, gui)
 
 	local battery = new("Frame", {
 		Name = "Battery",
@@ -6619,28 +7980,18 @@ local function build()
 			"Shift  sprint (loud)",
 			"C      crouch (silent)",
 			"F      torch",
-			"Click  shoot",
-			"R      reload (torch goes off)",
+			"R      reload (your torch goes off)",
 			"G      raise the gold, if you have it",
 			"E      interact",
 			"Q      put a note down",
 			"H      this help",
 			"",
-			"Stand still to steady your aim.",
+			"Crouch near her while she grieves.",
 		}, "\n"),
 	}, helpPanel)
 end
 
 ------------------------------------------------------------------ calls
-
-function Hud.setCrosshair(position: Vector2, ringPixels: number, visible: boolean)
-	dot.Visible = visible
-	ring.Visible = visible
-	dot.Position = UDim2.fromOffset(position.X, position.Y)
-	ring.Position = UDim2.fromOffset(position.X, position.Y)
-	local size = math.clamp(ringPixels * 2, 8, 400)
-	ring.Size = UDim2.fromOffset(size, size)
-end
 
 local captionOrder = 0
 function Hud.caption(message: string, seconds: number?, style: string?)
@@ -6770,17 +8121,6 @@ end
 ------------------------------------------------------------------ per frame
 
 local function update()
-	local ammo = player:GetAttribute("Ammo")
-	local reserve = player:GetAttribute("Reserve")
-	ammoLabel.Text = if ammo then `{ammo}  /  {reserve or 0}` else ""
-	local status = ""
-	if player:GetAttribute("Reloading") then
-		status = "reloading"
-	elseif ammo == 0 then
-		status = if (reserve or 0) > 0 then "empty. [R] reload" else "empty"
-	end
-	statusLabel.Text = status
-
 	local battery = (player:GetAttribute("Battery") or 0) / Config.flashlight.maxBattery
 	batteryFill.Size = UDim2.fromScale(math.clamp(battery, 0, 1), 1)
 	batteryFill.BackgroundTransparency = if player:GetAttribute("LightOn") then 0 else 0.6
@@ -6853,6 +8193,95 @@ end
 
 return Hud
 ]=] },
+	{ service = {"StarterPlayer", "StarterPlayerScripts"}, path = {"AshgroveClient", "Torch"}, class = "ModuleScript", source = [=[
+--[[
+	Torch: the player's own torch, drawn locally so it follows the camera
+	without lag (the server's copy on your head, which everyone else sees,
+	is hidden on your screen). Also reports to the server:
+	  - where you're looking, ten times a second (the torch beam that
+	    monsters react to)
+	  - each left click with a tool out (your gun): monsters hear the shot,
+	    and Shots uses the ray to tell which body part you hit.
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local Shared = ReplicatedStorage:WaitForChild("Ashgrove")
+local Config = require(Shared:WaitForChild("Config"))
+local Net = require(Shared:WaitForChild("Net"))
+
+local player = Players.LocalPlayer
+
+local Torch = {}
+
+function Torch.start()
+	local torch = Instance.new("Part")
+	torch.Name = "AshLocalTorch"
+	torch.Anchored = true
+	torch.CanCollide = false
+	torch.CanQuery = false
+	torch.CanTouch = false
+	torch.Transparency = 1
+	torch.Size = Vector3.one * 0.2
+	local light = Instance.new("SpotLight")
+	light.Angle = Config.flashlight.angle
+	light.Range = Config.flashlight.range
+	light.Brightness = Config.flashlight.brightness
+	light.Color = Color3.fromRGB(255, 240, 220)
+	light.Shadows = true
+	light.Face = Enum.NormalId.Front
+	light.Enabled = false
+	light.Parent = torch
+	torch.Parent = workspace.CurrentCamera
+
+	RunService:BindToRenderStep("AshgroveTorch", Enum.RenderPriority.Camera.Value + 1, function()
+		local camera = workspace.CurrentCamera
+		if torch.Parent ~= camera then
+			torch.Parent = camera
+		end
+		torch.CFrame = camera.CFrame * CFrame.new(0.4, -0.5, 0)
+		light.Enabled = player:GetAttribute("LightOn") == true
+		local character = player.Character
+		local head = character and character:FindFirstChild("Head")
+		local attachment = head and head:FindFirstChild("AshFlashlight")
+		local serverLight = attachment and attachment:FindFirstChild("AshFlashlight")
+		if serverLight and serverLight:IsA("SpotLight") then
+			serverLight.Enabled = false
+		end
+	end)
+
+	local lastClick = 0
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+			return
+		end
+		local character = player.Character
+		if not character or not character:FindFirstChildOfClass("Tool") then
+			return
+		end
+		local now = os.clock()
+		if now - lastClick < 0.1 then
+			return
+		end
+		lastClick = now
+		local camera = workspace.CurrentCamera
+		Net.event("Shot"):FireServer(camera.CFrame.Position, camera.CFrame.LookVector)
+	end)
+
+	task.spawn(function()
+		local aimRemote = Net.unreliable("Aim")
+		while true do
+			task.wait(0.1)
+			aimRemote:FireServer(workspace.CurrentCamera.CFrame.LookVector)
+		end
+	end)
+end
+
+return Torch
+]=] },
 }
 
 local function child(parent: Instance, name: string): Instance
@@ -6908,7 +8337,7 @@ local function install()
 		end
 	end
 	if not workspace:FindFirstChild("AshgroveHouse") then
-		require(game:GetService("ServerScriptService").Ashgrove.Greybox).build()
+		require(game:GetService("ServerScriptService").Ashgrove.House).build()
 	end
 
 	if recording then

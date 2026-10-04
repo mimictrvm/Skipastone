@@ -7,6 +7,8 @@
 	  First crew  voice memos: WHAT WENT WRONG (rules taught by mistakes)
 	  The dead    memos only readable while the Banshee mourns there
 
+	The full arc these seed is in docs/ASHGROVE_STORY.md.
+
 	The auction house and every name here are invented. Keep it that way:
 	no real people, brands or places' logos.
 ]]
@@ -136,6 +138,17 @@ Each room keeps the custom once. After that it is only a room.]],
 Mr Ashgrove says the bells ring by themselves now. We have stopped answering them. We still look at which one rings.
 
 - Mrs Dunne, housekeeper]],
+	},
+
+	Grave_Receipt = {
+		title = "Sexton's chit, nailed to the spade",
+		body = [[Plot 11. Dig to the usual depth and leave it open.
+
+Paid in full, in gold, in advance.
+
+Do not fill it until she stops.
+
+- C. Ashgrove]],
 	},
 
 	Vault_Ledger = {

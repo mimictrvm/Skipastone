@@ -21,10 +21,15 @@ local bp = roblox.Instance.new("Part"); bp.Name = "Baseplate"; bp.Parent = works
 
 local env = { game = game, workspace = workspace, print = print, assert = assert, pcall = pcall, error = error, typeof = typeof, math = math, table = table, string = string, ipairs = ipairs, pairs = pairs, next = next, tostring = tostring, setmetatable = setmetatable, type = type, select = select }
 for k, v in roblox do env[k] = v end
+-- Studio's require: run a ModuleScript's Source once, with `script` set.
+local loaded = {}
 env.require = function(module)
-	-- Studio's require: load the ModuleScript's Source.
-	local menv = table.clone(env)
-	return luau.load(module.Source, { debugName = module.Name, environment = menv })()
+	if loaded[module] == nil then
+		local menv = table.clone(env)
+		menv.script = module
+		loaded[module] = luau.load(module.Source, { debugName = module.Name, environment = menv })()
+	end
+	return loaded[module]
 end
 
 local src = fs.readFile(process.args[1])

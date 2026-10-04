@@ -40,7 +40,19 @@ local function flat(v: Vector3): Vector3
 end
 
 local function hasHead(e): boolean
-	return not e.data.blind and e.data.head ~= nil and e.data.headWeld ~= nil and e.data.headWeld.Parent ~= nil
+	local d = e.data
+	return not d.blind and d.head ~= nil and d.headJoint ~= nil and d.headJoint.Parent ~= nil
+end
+
+-- Sets the head's turn on its joint (C0 if the head is the joint's Part1,
+-- otherwise C1), from the pose it had when built.
+local function poseHead(d)
+	local turn = CFrame.Angles(0, d.headYaw or 0, 0)
+	if d.headJoint.Part1 == d.head then
+		d.headJoint.C0 = d.headBase * turn
+	else
+		d.headJoint.C1 = d.headBase * turn:Inverse()
+	end
 end
 
 local function headLook(e): Vector3
@@ -57,7 +69,7 @@ local function turnHeadTowards(e, direction: Vector3, dt: number, rate: number)
 	local current = e.data.headYaw or 0
 	local step = math.clamp(target - current, -rate * dt, rate * dt)
 	e.data.headYaw = current + step
-	e.data.headWeld.C0 = CFrame.new(Rigs.DULLAHAN_HEAD_OFFSET) * CFrame.Angles(0, e.data.headYaw, 0)
+	poseHead(e.data)
 end
 
 local function headSees(e, player: Player, range: number): boolean
@@ -109,11 +121,11 @@ end
 
 local function dropHead(e)
 	local d = e.data
-	if not hasHead(e) then
+	if not hasHead(e) or not d.canDropHead then
 		return
 	end
-	d.headWeld:Destroy()
-	d.headWeld = nil
+	d.headJoint:Destroy()
+	d.headJoint = nil
 	d.blind = true
 	d.bodyHits = 0
 	local head: BasePart = d.head
@@ -125,6 +137,7 @@ local function dropHead(e)
 	end)
 	Audio.play("headDrop", head, 0.8)
 	Noise.emit(head.Position, 25, "impact")
+	e.animOverride = "blind"
 	e:setState("Blind")
 end
 
@@ -138,14 +151,12 @@ local function returnHead(e)
 	head.Massless = true
 	head.AssemblyLinearVelocity = Vector3.zero
 	d.headYaw = 0
-	local weld = Instance.new("Weld")
-	weld.Name = "HeadWeld"
-	weld.Part0 = e.root
-	weld.Part1 = head
-	weld.C0 = CFrame.new(Rigs.DULLAHAN_HEAD_OFFSET)
-	weld.Parent = head
-	d.headWeld = weld
+	local joint = d.headTemplate:Clone()
+	joint.Parent = head
+	d.headJoint = joint
+	poseHead(d)
 	d.blind = false
+	e.animOverride = nil
 	Say.near(e.root.Position, 60, "[He finds his head]", 3, "sound")
 end
 
@@ -159,8 +170,13 @@ end
 
 function Dullahan.build(e)
 	local model, root, humanoid, parts = Rigs.dullahan()
+	local joint = parts.headJoint
 	e.data.head = parts.head
-	e.data.headWeld = parts.headWeld
+	e.data.headJoint = joint
+	-- Kept to put the head back after it's been shot out of his hands.
+	e.data.headTemplate = joint:Clone()
+	e.data.headBase = if joint.Part1 == parts.head then joint.C0 else joint.C1
+	e.data.canDropHead = parts.head ~= root
 	e.data.headYaw = 0
 	e.data.route = Map.markers("Dullahan_Route_")
 	e.data.routeIndex = 1
@@ -279,6 +295,7 @@ function Dullahan.step(e, dt: number)
 			e:face((Crew.root(target) :: BasePart).Position)
 		end
 		if e:inState() >= cfg.windupTime then
+			e:action("attack")
 			Audio.play("dullahanWhip", root, 1, 200)
 			Say.near(root.Position, 80, "[CRACK]", 2, "sound")
 			if target and e:canTarget(target) and e:distanceTo(target) <= cfg.whipRange + 1.5 and e:canSee(root.Position, target, cfg.whipRange + 3) then
@@ -393,9 +410,9 @@ function Dullahan.onBanish(e, model: Model, _killer: Player?)
 	local head: BasePart? = d.head
 	local position = model:GetPivot().Position
 	-- The head stays, still glowing, where it rolled.
-	if head then
-		if d.headWeld then
-			d.headWeld:Destroy()
+	if head and d.canDropHead then
+		if d.headJoint then
+			d.headJoint:Destroy()
 		end
 		head.Massless = false
 		head.CanCollide = true
@@ -414,7 +431,7 @@ function Dullahan.onBanish(e, model: Model, _killer: Player?)
 		root.CanCollide = false
 	end
 	for _, p in model:GetDescendants() do
-		if p:IsA("WeldConstraint") then
+		if p:IsA("WeldConstraint") or p:IsA("JointInstance") then
 			p:Destroy()
 		elseif p:IsA("BasePart") and p ~= root then
 			p.CanCollide = true

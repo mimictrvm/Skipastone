@@ -1,21 +1,25 @@
 --[[
-	Rigs: greybox bodies for the entities, built from blocks so the game
-	runs before the art team's models exist.
+	Rigs: the entities' bodies. Your own model is used when Models finds
+	one (see Models.luau for where to put it); otherwise a greybox body
+	built from blocks, so the game always runs.
 
-	REPLACING WITH ART: keep the contract, not the blocks.
-	  - Killable entities: a Model with a Humanoid and an unrotated,
-	    invisible "HumanoidRootPart" whose -Z is the facing. Every part a
-	    bullet can hit carries a Hitbox attribute ("Head" or "Body").
-	  - Dullahan: the carried head is a separate part named "CarriedHead",
-	    held by a Weld (not a WeldConstraint) whose C0 the AI turns.
-	  - Banshee: a Model with an invisible "Root" at her feet and a part
-	    named "Face". Anchored, no collisions; she never walks.
-	Sizes follow the art brief (studs; a player is about 5.5 tall).
+	What a body gives the AI either way (Models prepares yours to match):
+	  - Killable entities: a Model with a Humanoid and a "HumanoidRootPart"
+	    whose -Z is the facing. Hittable parts carry a Hitbox attribute
+	    ("Head" or "Body").
+	  - Dullahan: the carried head is its own part, held by a joint whose
+	    C0 the AI turns (so the head looks around) and that it breaks when
+	    the head is shot out of his hands.
+	  - Banshee: a Model whose pivot ("Root") is at her feet, plus the part
+	    used as her face. No collisions; she never walks.
+	Greybox sizes follow the art brief (studs; a player is about 5.5 tall).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("Ashgrove"):WaitForChild("Config"))
+
+local Models = require(script.Parent.Parent.Models)
 
 local Rigs = {}
 
@@ -35,19 +39,7 @@ local function newRig(name: string, rootSize: Vector3, hipHeight: number): (Mode
 	local humanoid = Instance.new("Humanoid")
 	humanoid.RigType = Enum.HumanoidRigType.R15
 	humanoid.HipHeight = hipHeight
-	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
-	humanoid.BreakJointsOnDeath = false
-	humanoid.RequiresNeck = false -- greybox rigs have no neck joint
-	humanoid.MaxHealth = 1e6
-	humanoid.Health = 1e6
-	humanoid.UseJumpPower = true
-	humanoid.JumpPower = 0
-	humanoid.WalkSpeed = 0
-	humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-	humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-	humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing, false)
-	humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
+	Models.configureHumanoid(humanoid)
 	humanoid.Parent = model
 	return model, root, humanoid
 end
@@ -77,9 +69,24 @@ end
 
 Rigs.DULLAHAN_HEAD_OFFSET = Vector3.new(1.9, 1.7, -1.7)
 
--- Tall, headless, coated. Carries a glowing head in the right hand and a
--- whip of spine in the left. About 7.9 studs to the shoulders.
-function Rigs.dullahan(): (Model, Part, Humanoid, { head: Part, headWeld: Weld })
+export type HeadRig = { head: BasePart, headJoint: JointInstance }
+
+-- The Dullahan: your model, or a greybox one: tall, headless, coated,
+-- carrying a glowing head in the right hand and a whip of spine in the left.
+function Rigs.dullahan(): (Model, BasePart, Humanoid, HeadRig)
+	local custom, customRoot, customHumanoid, customHead = Models.creature("Dullahan")
+	if custom and customRoot and customHumanoid then
+		local head = customHead or customRoot
+		if customHead then
+			local glow = Instance.new("PointLight")
+			glow.Range = Config.entities.Dullahan.headGlowRadius
+			glow.Brightness = 1.2
+			glow.Color = Color3.fromRGB(255, 226, 170)
+			glow.Parent = customHead
+		end
+		return custom, customRoot, customHumanoid, { head = head, headJoint = Models.jointFor(custom, customRoot, head) }
+	end
+
 	local model, root, humanoid = newRig("Dullahan", Vector3.new(2, 2, 1), 2.5)
 	local coat = Color3.fromRGB(28, 26, 28)
 	local cloth = Color3.fromRGB(46, 42, 40)
@@ -145,11 +152,16 @@ function Rigs.dullahan(): (Model, Part, Humanoid, { head: Part, headWeld: Weld }
 	headWeld.Parent = head
 	head.Parent = model
 
-	return model, root, humanoid, { head = head, headWeld = headWeld }
+	return model, root, humanoid, { head = head, headJoint = headWeld }
 end
 
--- PLACEHOLDER minor entity (decision #1): a low, pale crawler.
-function Rigs.lampshy(): (Model, Part, Humanoid)
+-- The Lamp-shy (PLACEHOLDER minor entity, decision #1): your model, or a
+-- low, pale greybox crawler.
+function Rigs.lampshy(): (Model, BasePart, Humanoid)
+	local custom, customRoot, customHumanoid = Models.creature("Lampshy")
+	if custom and customRoot and customHumanoid then
+		return custom, customRoot, customHumanoid
+	end
 	local model, root, humanoid = newRig("Lampshy", Vector3.new(2, 1.4, 3), 0.3)
 	local skin = Color3.fromRGB(200, 196, 186)
 	limb(model, root, "Body", Vector3.new(1.8, 1.1, 3.6), CFrame.new(0, 0.1, 0), skin, nil, "Body")
@@ -166,9 +178,14 @@ function Rigs.lampshy(): (Model, Part, Humanoid)
 	return model, root, humanoid
 end
 
--- The Banshee: tall, still, robed in her reserved colour. Anchored; she
--- appears and disappears, she never walks.
-function Rigs.banshee(): Model
+-- The Banshee: your model, or a greybox one, tall, still, robed in her
+-- reserved colour. Anchored; she appears and disappears, she never walks.
+-- Returns the model, her face (torch check) and where her keen comes from.
+function Rigs.banshee(): (Model, BasePart, BasePart)
+	local custom, customFace, customChest = Models.banshee()
+	if custom and customFace and customChest then
+		return custom, customFace, customChest
+	end
 	local model = Instance.new("Model")
 	model.Name = "Banshee"
 	local root = Instance.new("Part")
@@ -219,8 +236,9 @@ function Rigs.banshee(): Model
 	light.Color = colour
 	light.Range = 12
 	light.Brightness = 0.7
-	light.Parent = model:FindFirstChild("Chest")
-	return model
+	local chest = model:FindFirstChild("Chest") :: BasePart
+	light.Parent = chest
+	return model, model:FindFirstChild("Face") :: BasePart, chest
 end
 
 return Rigs

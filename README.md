@@ -14,8 +14,9 @@ ServerScriptService and `src/client/*` into StarterPlayerScripts.
 
 ## Ashgrove House (horror)
 
-A separate Roblox project in [`ashgrove/`](ashgrove/README.md): a playable
-greybox of Story 1, built to the creative direction in
-[docs/ASHGROVE_DIRECTION.md](docs/ASHGROVE_DIRECTION.md). To try it, paste
+A separate Roblox project in [`ashgrove/`](ashgrove/README.md): Story 1,
+playable on a dressed map of the house, built to the creative direction in
+[docs/ASHGROVE_DIRECTION.md](docs/ASHGROVE_DIRECTION.md) and the five-story
+arc in [docs/ASHGROVE_STORY.md](docs/ASHGROVE_STORY.md). To try it, paste
 [`ashgrove/AshgroveInstaller.lua`](ashgrove/AshgroveInstaller.lua) into
 Studio's Command Bar.

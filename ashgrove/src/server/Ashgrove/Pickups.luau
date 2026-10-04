@@ -1,5 +1,7 @@
 --[[
-	Pickups: ammo, batteries and the gold ward.
+	Pickups: ammo, batteries and the gold ward. Ammo goes to YOUR gun
+	through Hooks.giveAmmo; until that's wired (Hooks.ammoPickups), ammo
+	pickups stay out of the map.
 
 	Each pickup part has Kind ("ammo" | "battery" | "gold"), Group and
 	Always. Always pickups are always there. For the rest, each group puts
@@ -16,14 +18,14 @@ local Audio = require(Shared:WaitForChild("Audio"))
 local Config = require(Shared:WaitForChild("Config"))
 
 local Crew = require(script.Parent.Crew)
-local Gun = require(script.Parent.Gun)
+local Hooks = require(script.Parent.Hooks)
 local Map = require(script.Parent.Map)
 local Say = require(script.Parent.Say)
 
 local Pickups = {}
 
 local LABELS = {
-	ammo = { action = "Take", object = "Pistol rounds" },
+	ammo = { action = "Take", object = "Ammunition" },
 	battery = { action = "Take", object = "Torch batteries" },
 	gold = { action = "Take", object = "Gold sovereign" },
 }
@@ -40,18 +42,22 @@ local function show(p: BasePart, visible: boolean)
 	p:SetAttribute("Live", visible)
 end
 
+-- Ammo only appears once Hooks.giveAmmo is wired to your gun.
+local function allowed(p: BasePart): boolean
+	return p:GetAttribute("Kind") ~= "ammo" or Hooks.ammoPickups == true
+end
+
 local function take(p: BasePart, player: Player)
 	if not p:GetAttribute("Live") or not Crew.isActive(player) then
 		return
 	end
 	local kind = p:GetAttribute("Kind")
 	if kind == "ammo" then
-		local taken = Gun.addAmmo(player, Config.pickups.ammoAmount)
-		if taken <= 0 then
-			Say.to(player, "Your pockets are full of rounds already.", 2, "hint")
+		if not Hooks.giveAmmo(player, Config.pickups.ammoAmount) then
+			Say.to(player, "No room for more rounds.", 2, "hint")
 			return
 		end
-		Say.to(player, `+{taken} rounds`, 2, "hint")
+		Say.to(player, `+{Config.pickups.ammoAmount} rounds`, 2, "hint")
 	elseif kind == "battery" then
 		if not Crew.addBattery(player, Config.pickups.batteryAmount) then
 			Say.to(player, "Your torch is already full.", 2, "hint")
@@ -71,7 +77,7 @@ function Pickups.roll()
 	local byGroup: { [string]: { BasePart } } = {}
 	for _, p in Map.interact("Pickups"):GetChildren() do
 		-- Always pickups were set out by setup (and may be taken already).
-		if p:IsA("BasePart") and not p:GetAttribute("Always") then
+		if p:IsA("BasePart") and not p:GetAttribute("Always") and allowed(p) then
 			show(p, false)
 			local group = p:GetAttribute("Group") or "Default"
 			byGroup[group] = byGroup[group] or {}
@@ -108,7 +114,7 @@ function Pickups.setup()
 			end
 			-- Until the run's roll (Director, once the party is in), only the
 			-- Always pickups are out.
-			show(p, p:GetAttribute("Always") == true)
+			show(p, p:GetAttribute("Always") == true and allowed(p))
 		end
 	end
 	-- If whoever had the gold leaves, it goes back in its case.

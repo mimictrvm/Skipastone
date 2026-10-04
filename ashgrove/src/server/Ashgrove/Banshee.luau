@@ -37,6 +37,7 @@ local Crew = require(script.Parent.Crew)
 local Doors = require(script.Parent.Doors)
 local Light = require(script.Parent.Light)
 local Map = require(script.Parent.Map)
+local Models = require(script.Parent.Models)
 local Noise = require(script.Parent.Noise)
 local Reading = require(script.Parent.Reading)
 local Registry = require(script.Parent.Entities.Registry)
@@ -73,6 +74,10 @@ type Mourning = {
 }
 
 local model: Model
+local facePart: BasePart
+local chestPart: BasePart
+local anims: Models.Animations
+local kneelDrop = 2.4
 local state = "Hidden"
 local keen: Keen? = nil
 local mourning: Mourning? = nil
@@ -104,7 +109,8 @@ local function eachPart(fn: (BasePart) -> ())
 end
 
 local function show(cf: CFrame, pose: string)
-	local placed = if pose == "kneel" then cf * CFrame.new(0, -2.4, 0) * CFrame.Angles(math.rad(-14), 0, 0) else cf
+	local placed = if pose == "kneel" then cf * CFrame.new(0, -kneelDrop, 0) * CFrame.Angles(math.rad(-14), 0, 0) else cf
+	anims.loop(if pose == "kneel" then "mourn" elseif state == "Keening" or state == "Ending" then "keen" else "idle")
 	model:PivotTo(placed)
 	eachPart(function(p)
 		p.Transparency = 1
@@ -297,7 +303,7 @@ local function take()
 	if keen ~= k then
 		return
 	end
-	Audio.play("bansheeTake", model:FindFirstChild("Chest") or model.PrimaryPart, 1, 300)
+	Audio.play("bansheeTake", chestPart, 1, 300)
 	Crew.take(victim)
 	Say.all("[A scream, and then nothing]", 4, "sound")
 	resolve("taken", victim)
@@ -343,12 +349,9 @@ function Banshee.keen(wing: string, opts: { target: Player?, forced: boolean?, a
 	show(o.at or keenSpot(wing, victimTarget), "stand")
 	Storm.silence(true)
 	stopKeenSound()
-	local chest = model:FindFirstChild("Chest")
-	if chest then
-		keenSound = Audio.loop("keen", chest, 1)
-		if keenSound then
-			keenSound.RollOffMaxDistance = 400
-		end
+	keenSound = Audio.loop("keen", chestPart, 1)
+	if keenSound then
+		keenSound.RollOffMaxDistance = 400
 	end
 	Say.all("[A keening rises. The storm goes quiet.]", 5, "sound")
 	Say.to(victimTarget, "She is facing you.", 6, "story")
@@ -516,16 +519,17 @@ function Banshee.ending(at: CFrame)
 	show(at, "stand")
 	Storm.silence(true)
 	stopKeenSound()
-	local chest = model:FindFirstChild("Chest")
-	if chest then
-		keenSound = Audio.loop("keen", chest, 1)
-	end
+	keenSound = Audio.loop("keen", chestPart, 1)
 end
 
 ------------------------------------------------------------------ loop
 
 function Banshee.setup()
-	model = Rigs.banshee()
+	model, facePart, chestPart = Rigs.banshee()
+	anims = Models.animations(model, "Banshee")
+	if Models.find("Banshee") then
+		kneelDrop = Config.models.Banshee.kneelDrop
+	end
 	model.Parent = ServerStorage
 
 	Registry.died:Connect(function(entity, position: Vector3)
@@ -578,7 +582,7 @@ function Banshee.setup()
 			end
 
 			if state == "Mourning" and mourning then
-				local face = model:FindFirstChild("Face") :: BasePart?
+				local face = facePart
 				local herPos = model:GetPivot().Position
 				local disturber: Player? = nil
 				local listening = now >= mourning.graceUntil

@@ -29,13 +29,14 @@ local Banshee = require(Ashgrove.Banshee)
 local BellBoard = require(Ashgrove.BellBoard)
 local Crew = require(Ashgrove.Crew)
 local Doors = require(Ashgrove.Doors)
-local Gun = require(Ashgrove.Gun)
 local Map = require(Ashgrove.Map)
+local Models = require(Ashgrove.Models)
 local Pickups = require(Ashgrove.Pickups)
 local Reading = require(Ashgrove.Reading)
 local Retrieval = require(Ashgrove.Retrieval)
 local Rites = require(Ashgrove.Rites)
 local Say = require(Ashgrove.Say)
+local Shots = require(Ashgrove.Shots)
 local Storm = require(Ashgrove.Storm)
 local Entity = require(Ashgrove.Entities.Entity)
 local Registry = require(Ashgrove.Entities.Registry)
@@ -84,7 +85,6 @@ end
 
 local function setCheckpoint(name: string)
 	checkpointName = name
-	Gun.saveAll()
 end
 
 local function card(title: string, subtitle: string)
@@ -103,7 +103,7 @@ local function chapterOne()
 		{ text = "Find the first crew's camp in the hall" },
 	})
 	task.delay(4, function()
-		Say.all("WASD move, Shift sprint, C crouch, F torch, Click shoot, R reload, E interact. H for help.", 10, "hint")
+		Say.all("Shift sprint, C crouch, F torch, G raise gold, E interact, H help.", 10, "hint")
 	end)
 end
 
@@ -168,7 +168,19 @@ local function ending()
 	Say.all("You're out in the rain, and she's still keening.", 5, "story")
 	task.wait(5)
 	Say.all("It wasn't about you.", 5, "story")
-	task.wait(5)
+	task.wait(4)
+	-- The first crew's dead van, behind you.
+	local lights = Map.root():FindFirstChild("CrewOneHeadlights", true)
+	local beam = lights and lights:FindFirstChildOfClass("SpotLight")
+	if lights and beam and lights:IsA("BasePart") then
+		lights.Material = Enum.Material.Neon
+		beam.Enabled = true
+		Say.all("[Behind you, the first crew's van flashes its headlights once]", 4, "sound")
+		task.wait(0.6)
+		beam.Enabled = false
+		lights.Material = Enum.Material.Glass
+	end
+	task.wait(4)
 	Net.event("Screen"):FireAllClients("end", "END OF STORY 1\n\nThe box was empty.\nSomebody is wearing what was in it.")
 end
 
@@ -291,7 +303,6 @@ local function onWipe()
 	end
 	Doors.clearLockouts()
 	Crew.resetAll(Map.marker(checkpointName).CFrame)
-	Gun.restoreAll()
 	if flags.ruleBreak and not flags.finale then
 		-- The vault keen is lost with the wipe; go straight to the escape.
 		flags.finale = true
@@ -324,9 +335,8 @@ local function onDebug(player: Player, command: any)
 			Say.to(player, "[debug] can't keen here (hall, van and grounds never keen)", 3, "hint")
 		end
 	elseif command == "refill" then
-		Gun.refill(player)
 		Crew.addBattery(player, Config.flashlight.maxBattery)
-		Say.to(player, "[debug] refilled", 2, "hint")
+		Say.to(player, "[debug] torch refilled", 2, "hint")
 	end
 end
 
@@ -346,7 +356,8 @@ function Director.start()
 	Crew.spawnCFrame = function()
 		return Map.marker(checkpointName).CFrame
 	end
-	Gun.start()
+	Models.collect()
+	Shots.start()
 	Crew.start()
 	Pickups.setup()
 

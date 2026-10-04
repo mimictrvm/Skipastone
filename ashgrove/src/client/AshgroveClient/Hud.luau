@@ -1,12 +1,13 @@
 --[[
 	Hud: everything on screen. Built in code so there's nothing to import.
 
-	Reads the player attributes the server sets (Ammo, Reserve, Reloading,
-	Battery, LightOn, HasGold, WardReadyAt, Commit*, Downed, Taken, Hits)
+	Reads the player attributes the server sets (Battery, LightOn, HasGold,
+	WardReadyAt, Commit*, Downed, Taken, Hits)
 	every frame, and exposes calls for one-off events (captions, notes,
 	chapter cards, keens, full-screen states).
 
 	Kept deliberately quiet: no health bar, no minimap, no timer on a keen.
+	No crosshair or ammo counter either: those are your gun's.
 ]]
 
 local Players = game:GetService("Players")
@@ -29,10 +30,6 @@ local BODY_FONT = Enum.Font.SourceSans
 local TITLE_FONT = Enum.Font.Garamond
 
 local gui: ScreenGui
-local dot: Frame
-local ring: Frame
-local ammoLabel: TextLabel
-local statusLabel: TextLabel
 local batteryFill: Frame
 local goldLabel: TextLabel
 local objectivesFrame: Frame
@@ -90,45 +87,6 @@ local function build()
 		IgnoreGuiInset = true,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 	}, player:WaitForChild("PlayerGui"))
-
-	-- Crosshair: a dot where the shot will go, and a ring showing how much
-	-- the aim is swaying. Stand still and the ring closes in.
-	ring = new("Frame", {
-		Name = "Ring",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		BackgroundTransparency = 1,
-		Size = UDim2.fromOffset(20, 20),
-	}, gui)
-	new("UICorner", { CornerRadius = UDim.new(1, 0) }, ring)
-	new("UIStroke", { Color = PAPER, Transparency = 0.65, Thickness = 1 }, ring)
-	dot = new("Frame", {
-		Name = "Dot",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		BackgroundColor3 = PAPER,
-		BackgroundTransparency = 0.1,
-		BorderSizePixel = 0,
-		Size = UDim2.fromOffset(4, 4),
-	}, gui)
-	new("UICorner", { CornerRadius = UDim.new(1, 0) }, dot)
-
-	ammoLabel = text({
-		Name = "Ammo",
-		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, -28, 1, -28),
-		Size = UDim2.fromOffset(200, 34),
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextSize = 28,
-		Font = TITLE_FONT,
-	}, gui)
-	statusLabel = text({
-		Name = "Status",
-		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, -28, 1, -62),
-		Size = UDim2.fromOffset(240, 22),
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextColor3 = DIM,
-		TextSize = 18,
-	}, gui)
 
 	local battery = new("Frame", {
 		Name = "Battery",
@@ -350,28 +308,18 @@ local function build()
 			"Shift  sprint (loud)",
 			"C      crouch (silent)",
 			"F      torch",
-			"Click  shoot",
-			"R      reload (torch goes off)",
+			"R      reload (your torch goes off)",
 			"G      raise the gold, if you have it",
 			"E      interact",
 			"Q      put a note down",
 			"H      this help",
 			"",
-			"Stand still to steady your aim.",
+			"Crouch near her while she grieves.",
 		}, "\n"),
 	}, helpPanel)
 end
 
 ------------------------------------------------------------------ calls
-
-function Hud.setCrosshair(position: Vector2, ringPixels: number, visible: boolean)
-	dot.Visible = visible
-	ring.Visible = visible
-	dot.Position = UDim2.fromOffset(position.X, position.Y)
-	ring.Position = UDim2.fromOffset(position.X, position.Y)
-	local size = math.clamp(ringPixels * 2, 8, 400)
-	ring.Size = UDim2.fromOffset(size, size)
-end
 
 local captionOrder = 0
 function Hud.caption(message: string, seconds: number?, style: string?)
@@ -501,17 +449,6 @@ end
 ------------------------------------------------------------------ per frame
 
 local function update()
-	local ammo = player:GetAttribute("Ammo")
-	local reserve = player:GetAttribute("Reserve")
-	ammoLabel.Text = if ammo then `{ammo}  /  {reserve or 0}` else ""
-	local status = ""
-	if player:GetAttribute("Reloading") then
-		status = "reloading"
-	elseif ammo == 0 then
-		status = if (reserve or 0) > 0 then "empty. [R] reload" else "empty"
-	end
-	statusLabel.Text = status
-
 	local battery = (player:GetAttribute("Battery") or 0) / Config.flashlight.maxBattery
 	batteryFill.Size = UDim2.fromScale(math.clamp(battery, 0, 1), 1)
 	batteryFill.BackgroundTransparency = if player:GetAttribute("LightOn") then 0 else 0.6

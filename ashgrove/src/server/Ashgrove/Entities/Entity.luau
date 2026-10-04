@@ -31,7 +31,9 @@ local Config = require(ReplicatedStorage:WaitForChild("Ashgrove"):WaitForChild("
 local Ashgrove = script.Parent.Parent
 local Crew = require(Ashgrove.Crew)
 local Map = require(Ashgrove.Map)
+local Models = require(Ashgrove.Models)
 local Noise = require(Ashgrove.Noise)
+local Shots = require(Ashgrove.Shots)
 local Registry = require(script.Parent.Registry)
 
 local Entity = {}
@@ -67,6 +69,8 @@ function Entity.new(id: string, cfg: { [string]: any }, behaviour: { [string]: a
 		pathGoal = Vector3.zero,
 		pathAt = 0,
 		pathBusy = false,
+		anim = nil :: Models.Animations?,
+		animOverride = nil :: string?,
 	}, Entity)
 	Registry.add(self)
 	return self
@@ -101,9 +105,35 @@ function Entity:spawn()
 	local model, root, humanoid = self.behaviour.build(self)
 	model:SetAttribute("EntityId", self.id)
 	model:PivotTo(marker.CFrame)
+	-- Stand it on the floor whatever its size (your model may be taller
+	-- or shorter than the greybox).
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { model }
+	local floor = workspace:Raycast(marker.Position + Vector3.new(0, 2, 0), Vector3.new(0, -30, 0), params)
+	if floor then
+		local box, size = model:GetBoundingBox()
+		local bottom = box.Position.Y - size.Y / 2
+		model:PivotTo(model:GetPivot() + Vector3.new(0, floor.Position.Y + 0.05 - bottom, 0))
+	end
 	model.Parent = folder()
 	root:SetNetworkOwner(nil)
 	self.model, self.root, self.humanoid = model, root, humanoid
+	self.anim = Models.animations(model, self.id)
+	self.animOverride = nil
+
+	-- Your gun's damage is the confirmed hit (see Shots). Health is topped
+	-- straight back up: Ashgrove's monsters die by their rules, not by HP.
+	local lastHealth = humanoid.Health
+	humanoid.HealthChanged:Connect(function(health)
+		if health < lastHealth - 0.01 and self.humanoid == humanoid then
+			humanoid.Health = humanoid.MaxHealth
+			lastHealth = humanoid.MaxHealth
+			Shots.onDamaged(self)
+		else
+			lastHealth = health
+		end
+	end)
 	self.status = "active"
 	self.state = ""
 	self:setState("Idle")
@@ -333,6 +363,13 @@ function Entity:face(point: Vector3)
 	end
 end
 
+-- A one-off animation (Config.models[id].animations), e.g. "attack".
+function Entity:action(name: string)
+	if self.anim then
+		self.anim.action(name)
+	end
+end
+
 function Entity:shot(part: BasePart, shooter: Player, position: Vector3)
 	if self.status == "active" then
 		self.behaviour.onShot(self, part, shooter, position)
@@ -392,6 +429,11 @@ function Entity.startLoop()
 						local ok, err = pcall(e.behaviour.step, e, dt)
 						if not ok then
 							warn(`[Ashgrove] {e.id} step failed: {err}`)
+						end
+						if e.anim and e.root then
+							local v = e.root.AssemblyLinearVelocity
+							local speed = Vector3.new(v.X, 0, v.Z).Magnitude
+							e.anim.loop(e.animOverride or (if speed > 10 then "run" elseif speed > 0.5 then "walk" else "idle"))
 						end
 					end
 				elseif e.status == "banished" and now >= e.reformAt then

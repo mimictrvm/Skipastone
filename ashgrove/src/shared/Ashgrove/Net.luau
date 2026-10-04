@@ -3,10 +3,10 @@
 	looked up by the client. Names are listed here so both sides agree.
 
 	Client -> server
-	  Fire(origin, direction)   Reload()   Flashlight(on)   Move(mode)
+	  Shot(origin, direction)   Reload()   Flashlight(on)   Move(mode)
 	  Aim(direction)*           Ward()     Debug(command)
 	Server -> client
-	  ShotFx(shooter, origin, hit, kind)   Caption(text, seconds, style)
+	  Caption(text, seconds, style)
 	  Note(noteId)   Objectives(list)   Chapter(title, subtitle)
 	  Keen(state, info)   Lightning(strength)   Screen(kind, text)
 	  Spectate(on)
@@ -18,13 +18,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local RELIABLE = {
-	"Fire",
+	"Shot",
 	"Reload",
 	"Flashlight",
 	"Move",
 	"Ward",
 	"Debug",
-	"ShotFx",
 	"Caption",
 	"Note",
 	"Objectives",

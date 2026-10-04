@@ -1,9 +1,11 @@
 --[[
 	Controls: keyboard input. Movement modes go to the server, which sets
 	speed (and the noise you make). PC keyboard and mouse only for now.
+	Shooting and reloading are your gun's; the reload key here only tells
+	Ashgrove to put the torch out while you reload.
 
-	  Shift sprint   C crouch   F torch   R reload   G gold   Q close note
-	  H help         E interact (Roblox prompts)
+	  Shift sprint   C crouch   F torch   G gold   Q close note   H help
+	  E interact (Roblox prompts)   R (Config.integration.reloadKey) reload
 	  Studio only: F6 next chapter, F7 keen here, F8 refill
 ]]
 
@@ -54,7 +56,7 @@ function Controls.start(hud)
 			sendMode()
 		elseif key == Enum.KeyCode.F then
 			Net.event("Flashlight"):FireServer(not player:GetAttribute("Flashlight"))
-		elseif key == Enum.KeyCode.R then
+		elseif key == Config.integration.reloadKey then
 			Net.event("Reload"):FireServer()
 		elseif key == Enum.KeyCode.G then
 			Net.event("Ward"):FireServer()
@@ -68,7 +70,7 @@ function Controls.start(hud)
 			elseif key == Enum.KeyCode.F7 then
 				Net.event("Debug"):FireServer("keen")
 			elseif key == Enum.KeyCode.F8 then
-				Net.event("Debug"):FireServer("refill")
+				Net.event("Debug"):FireServer("refill") -- torch battery
 			end
 		end
 	end)
