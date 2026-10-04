@@ -374,3 +374,33 @@ def drape(P, z_top, z_bot, r_top, r_bot, centre=(0.0, 0.0), folds=7, amp_top=0.0
         w = np.radians(open_back) * us ** 2
         d = np.maximum(d, (w - (np.pi - np.abs(th))) * rho)
     return d
+
+
+def sweep(P, pts, radii, squash=None):
+    """Smooth tube along a polyline with linearly varying radius (no joint bulges).
+    squash: optional per-point (sx, sy) scale of the cross-section in a frame
+    whose x axis is world X (good for tails that bend in the YZ plane)."""
+    pts = np.asarray(pts, np.float64)
+    radii = np.asarray(radii, np.float64)
+    best = np.full(len(P), 1e9)
+    for i in range(len(pts) - 1):
+        a, b = pts[i], pts[i + 1]
+        ab = b - a
+        L2 = float(ab @ ab)
+        t = np.clip(((P - a) @ ab) / L2, 0, 1)
+        q = P - (a + np.outer(t, ab))
+        r = radii[i] + (radii[i + 1] - radii[i]) * t
+        if squash is not None:
+            sq = np.asarray(squash[i]) + (np.asarray(squash[i + 1]) - np.asarray(squash[i])) * t[:, None]
+            # cross-section frame: x = world X, y = perpendicular in the YZ plane
+            d = ab / np.sqrt(L2)
+            yax = np.cross(d, np.array([1.0, 0, 0]))
+            yax /= np.linalg.norm(yax) + 1e-9
+            qx = q[:, 0] / sq[:, 0]
+            qy = (q @ yax) / sq[:, 1]
+            qz = q @ d
+            dist = (np.sqrt(qx * qx + qy * qy + qz * qz) - r) * np.minimum(sq[:, 0], sq[:, 1])
+        else:
+            dist = np.linalg.norm(q, axis=1) - r
+        best = np.minimum(best, dist)
+    return best

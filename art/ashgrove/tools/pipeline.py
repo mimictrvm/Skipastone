@@ -72,7 +72,8 @@ def build(C):
     tex_dir = os.path.join(od, 'Textures')
     if '--skip-bake' in sys.argv:
         maps = {k: os.path.join(tex_dir, f'{asset}_{n}.png') for k, n in
-                (('albedo', 'Color'), ('rough', 'Roughness'), ('metal', 'Metalness'), ('normal', 'Normal'))}
+                (('albedo', 'Color'), ('rough', 'Roughness'), ('metal', 'Metalness'), ('normal', 'Normal'),
+                 ('emit', 'Emissive')) if os.path.exists(os.path.join(tex_dir, f'{asset}_{n}.png'))}
     else:
         bk.log('baking ...')
         maps = bk.bake_maps(low, [p.hi for p in tex_pieces], tex_dir, asset,

@@ -239,8 +239,9 @@ def anim_sheet(C, arm, meshes, clips, out, per=6):
     cam.data.lens = 35
     span = max(H, hi[0] - lo[0], hi[1] - lo[1]) * C.ANIM_ZOOM
     dist = span * 1.45
-    cam.location = Vector((ctr[0] - dist * 0.62, ctr[1] - dist * 0.78, H * 0.55))
-    bk.look_at(cam, (ctr[0], ctr[1], H * 0.47))
+    aim = Vector(getattr(C, 'ANIM_TARGET', (ctr[0], ctr[1], H * 0.47)))
+    cam.location = aim + Vector((-dist * 0.62, -dist * 0.78, H * 0.08))
+    bk.look_at(cam, aim)
     w, h = 240, 300
     rows = []
     for cname, act in clips:

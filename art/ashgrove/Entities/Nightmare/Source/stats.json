@@ -1,0 +1,62 @@
+{
+ "asset": "AH_Ent_Nightmare",
+ "meshes": {
+  "AH_Ent_Nightmare": {
+   "tris": 11400,
+   "verts": 5576,
+   "max_influences": 4,
+   "unweighted_verts": 0
+  },
+  "AH_Ent_Nightmare_Glow": {
+   "tris": 60,
+   "verts": 34,
+   "max_influences": 1,
+   "unweighted_verts": 0
+  }
+ },
+ "bones": 41,
+ "deform_bones": 39,
+ "size_studs": {
+  "width_x": 6.01,
+  "height_z": 7.65,
+  "depth_y": 1.64,
+  "min_z": 0.544
+ },
+ "clips": {
+  "Idle": {
+   "frames": 120,
+   "seconds": 4.0,
+   "loop": true
+  },
+  "Drift": {
+   "frames": 60,
+   "seconds": 2.0,
+   "loop": true
+  },
+  "Hunt": {
+   "frames": 30,
+   "seconds": 1.0,
+   "loop": true
+  },
+  "Attack": {
+   "frames": 54,
+   "seconds": 1.8,
+   "loop": false
+  },
+  "Hallucinate": {
+   "frames": 60,
+   "seconds": 2.0,
+   "loop": true
+  },
+  "Manifest": {
+   "frames": 60,
+   "seconds": 2.0,
+   "loop": false
+  },
+  "Vanish": {
+   "frames": 36,
+   "seconds": 1.2,
+   "loop": false
+  }
+ }
+}

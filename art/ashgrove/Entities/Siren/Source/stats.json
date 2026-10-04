@@ -1,0 +1,67 @@
+{
+ "asset": "AH_Ent_Siren",
+ "meshes": {
+  "AH_Ent_Siren": {
+   "tris": 11000,
+   "verts": 5508,
+   "max_influences": 4,
+   "unweighted_verts": 0
+  },
+  "AH_Ent_Siren_Glow": {
+   "tris": 60,
+   "verts": 34,
+   "max_influences": 1,
+   "unweighted_verts": 0
+  }
+ },
+ "bones": 38,
+ "deform_bones": 36,
+ "size_studs": {
+  "width_x": 5.55,
+  "height_z": 6.56,
+  "depth_y": 6.15,
+  "min_z": 0.542
+ },
+ "clips": {
+  "Idle": {
+   "frames": 120,
+   "seconds": 4.0,
+   "loop": true
+  },
+  "Swim": {
+   "frames": 48,
+   "seconds": 1.6,
+   "loop": true
+  },
+  "SwimFast": {
+   "frames": 24,
+   "seconds": 0.8,
+   "loop": true
+  },
+  "Sing": {
+   "frames": 90,
+   "seconds": 3.0,
+   "loop": true
+  },
+  "Attack": {
+   "frames": 42,
+   "seconds": 1.4,
+   "loop": false
+  },
+  "Scream": {
+   "frames": 45,
+   "seconds": 1.5,
+   "loop": false
+  },
+  "Manifest": {
+   "frames": 60,
+   "seconds": 2.0,
+   "loop": false
+  },
+  "Vanish": {
+   "frames": 36,
+   "seconds": 1.2,
+   "loop": false
+  }
+ }
+}

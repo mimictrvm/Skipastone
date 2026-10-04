@@ -335,7 +335,8 @@ class NodeKit:
             self.set(n.inputs['Normal'], normal)
         return n.outputs['Normal']
 
-    def finish(self, albedo, rough, metal=0.0, normal=None, emission=None, emit_strength=0.0, sss=0.0):
+    def finish(self, albedo, rough, metal=0.0, normal=None, emission=None, emit_strength=0.0, sss=0.0,
+               emit_mask=None):
         """Principled output + a spare emission node used for baking."""
         bsdf = self.node('ShaderNodeBsdfPrincipled')
         bsdf.name = 'BSDF'
@@ -360,6 +361,11 @@ class NodeKit:
         self.mat['bake_albedo'] = self._sock_path(albedo)
         self.mat['bake_rough'] = self._sock_path(rough)
         self.mat['bake_metal'] = self._sock_path(metal)
+        self.mat['bake_emit'] = self._sock_path(emit_mask if emit_mask is not None else 0.0)
+        if emit_mask is not None:
+            self.mat['has_emit'] = True
+            self.set(bsdf.inputs['Emission Color'], (1.0, 0.35, 0.06))
+            self.set(bsdf.inputs['Emission Strength'], self.math('MULTIPLY', emit_mask, 3.0))
         return bsdf
 
     def _sock_path(self, s):
@@ -388,7 +394,8 @@ def set_bake_pass(mats, which):
         if which == 'normal':
             nt.links.new(bsdf.outputs[0], out.inputs['Surface'])
             continue
-        src = bake_source(m, {'albedo': 'bake_albedo', 'rough': 'bake_rough', 'metal': 'bake_metal'}[which])
+        src = bake_source(m, {'albedo': 'bake_albedo', 'rough': 'bake_rough', 'metal': 'bake_metal',
+                              'emit': 'bake_emit'}[which])
         for l in list(em.inputs['Color'].links):
             nt.links.remove(l)
         if isinstance(src, bpy.types.NodeSocket):
@@ -421,9 +428,13 @@ def bake_maps(low, highs, out_dir, prefix, size=1024, extrusion=0.03, ray=0.12, 
     tex = mat.node_tree.nodes.new('ShaderNodeTexImage')
     mats = list({m for h in highs for m in h.data.materials if m})
     results = {}
-    for which, btype, cs in (('albedo', 'EMIT', 'sRGB'), ('rough', 'EMIT', 'Non-Color'),
-                             ('metal', 'EMIT', 'Non-Color'), ('normal', 'NORMAL', 'Non-Color')):
-        name = {'albedo': 'Color', 'rough': 'Roughness', 'metal': 'Metalness', 'normal': 'Normal'}[which]
+    passes = [('albedo', 'EMIT', 'sRGB'), ('rough', 'EMIT', 'Non-Color'),
+              ('metal', 'EMIT', 'Non-Color'), ('normal', 'NORMAL', 'Non-Color')]
+    if any(m.get('has_emit') for m in mats):
+        passes.append(('emit', 'EMIT', 'Non-Color'))
+    for which, btype, cs in passes:
+        name = {'albedo': 'Color', 'rough': 'Roughness', 'metal': 'Metalness', 'normal': 'Normal',
+                'emit': 'Emissive'}[which]
         img = bpy.data.images.new(f'{prefix}_{name}', size, size, alpha=False, float_buffer=(which == 'normal'))
         img.colorspace_settings.name = cs
         tex.image = img
@@ -472,6 +483,10 @@ def game_material(name, maps, glow=None):
     nk.set(bsdf.inputs['Roughness'], rgh.outputs['Color'])
     nk.set(bsdf.inputs['Metallic'], met.outputs['Color'])
     nk.set(bsdf.inputs['Normal'], nm.outputs['Normal'])
+    if maps.get('emit'):
+        em = img(maps['emit'], 'Non-Color')
+        nk.set(bsdf.inputs['Emission Color'], (1.0, 0.35, 0.06))
+        nk.set(bsdf.inputs['Emission Strength'], nk.math('MULTIPLY', em.outputs['Color'], 3.0))
     out = nk.node('ShaderNodeOutputMaterial')
     nk.nt.links.new(bsdf.outputs[0], out.inputs['Surface'])
     return mat

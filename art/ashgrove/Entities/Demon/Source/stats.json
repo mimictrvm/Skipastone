@@ -1,0 +1,67 @@
+{
+ "asset": "AH_Ent_Demon",
+ "meshes": {
+  "AH_Ent_Demon": {
+   "tris": 11194,
+   "verts": 5563,
+   "max_influences": 4,
+   "unweighted_verts": 0
+  },
+  "AH_Ent_Demon_Glow": {
+   "tris": 160,
+   "verts": 86,
+   "max_influences": 1,
+   "unweighted_verts": 0
+  }
+ },
+ "bones": 38,
+ "deform_bones": 36,
+ "size_studs": {
+  "width_x": 8.04,
+  "height_z": 10.14,
+  "depth_y": 1.83,
+  "min_z": 0.021
+ },
+ "clips": {
+  "Idle": {
+   "frames": 120,
+   "seconds": 4.0,
+   "loop": true
+  },
+  "Walk": {
+   "frames": 42,
+   "seconds": 1.4,
+   "loop": true
+  },
+  "Run": {
+   "frames": 21,
+   "seconds": 0.7,
+   "loop": true
+  },
+  "Attack": {
+   "frames": 39,
+   "seconds": 1.3,
+   "loop": false
+  },
+  "Roar": {
+   "frames": 60,
+   "seconds": 2.0,
+   "loop": false
+  },
+  "RepelledCross": {
+   "frames": 45,
+   "seconds": 1.5,
+   "loop": false
+  },
+  "Manifest": {
+   "frames": 60,
+   "seconds": 2.0,
+   "loop": false
+  },
+  "Vanish": {
+   "frames": 36,
+   "seconds": 1.2,
+   "loop": false
+  }
+ }
+}
