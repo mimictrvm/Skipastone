@@ -332,7 +332,10 @@ local function gallery(f: Instance, rng: Build.Rng)
 	end
 	-- Sconces between the portraits; only the first still works, just.
 	for i = 0, 8 do
-		sconce(f, "X", -8.5, -1, 8 + i * 12, 10, i == 0)
+		local x = 8 + i * 12
+		if math.abs(x - 20) > 4 then -- not over the library door
+			sconce(f, "X", -8.5, -1, x, 10, i == 0)
+		end
 	end
 	-- A second row, smaller, above the portraits.
 	for i, x in { 2, 26, 50, 74, 98 } do
@@ -434,6 +437,54 @@ local function servants(f: Instance, rng: Build.Rng)
 	end
 	cobweb(f, Vector3.new(109, 11, 29), 45)
 	cobweb(f, Vector3.new(-9, 11, 29), -45)
+end
+
+------------------------------------------------------------------ vault
+
+------------------------------------------------------------------ library
+
+local function library(f: Instance, rng: Build.Rng)
+	rug(f, -7, 47, -3.5, 3.5, 0, C.rugRed, C.rugGold)
+	-- The six countries' cases (their plates, ledgers and boxes are in
+	-- Interact/Puzzle/Library), then plain cases to fill the walls.
+	for _, r in { { -4, -1 }, { 6, -1 }, { 34, -1 }, { 44, -1 }, { 4, 1 }, { 16, 1 } } do
+		bookcase(f, at(r[1], if r[2] < 0 then -6.8 else 6.8, if r[2] < 0 then 180 else 0), 5, 8, rng)
+	end
+	for _, r in { { 13, -1 }, { 26, -1 }, { -5, 1 }, { 10, 1 }, { 23, 1 }, { 37, 1 } } do
+		bookcase(f, at(r[1], if r[2] < 0 then -6.8 else 6.8, if r[2] < 0 then 180 else 0), 5, 9.5, rng)
+	end
+	-- Reading tables, out of the way between the two doors.
+	for _, t in { { 2, 0 }, { 40, -0.5 } } do
+		local tx, tz = t[1], t[2]
+		piece(f, "LibraryTable", Vector3.new(9, 0.3, 3.4), CFrame.new(tx, 2.85, tz), C.walnut, M.Wood)
+		for _, sx in { -4, 4 } do
+			for _, sz in { -1.3, 1.3 } do
+				piece(f, "TableLeg", Vector3.new(0.35, 2.7, 0.35), CFrame.new(tx + sx, 1.35, tz + sz), C.walnut, M.Wood)
+			end
+		end
+		chair(f, at(tx - 2.5, tz - 2.6, 180), C.oakDark)
+		chair(f, at(tx + 2.5, tz + 2.6, 0), C.oakDark)
+		local lamp = piece(f, "ReadingLamp", Vector3.new(0.8, 0.5, 0.8), CFrame.new(tx + 3, 3.4, tz), Color3.fromRGB(40, 90, 60), M.Glass, true)
+		local light = Instance.new("PointLight")
+		light.Range = 16
+		light.Brightness = 0.9
+		light.Color = C.lamp
+		light.Shadows = true
+		light.Parent = lamp
+	end
+	for i = 0, 2 do
+		local book = piece(f, "OpenBook", Vector3.new(1.4, 0.12, 1), CFrame.new(-0.5 + i * 1.8, 3.06, rng:number(-0.6, 0.6)) * CFrame.Angles(0, rng:number(-0.4, 0.4), 0), C.paper, M.SmoothPlastic, true)
+		book.Name = "OpenBook"
+	end
+	column(f, "GlobeStand", 14, 0, -3, 2.6, 0.5, C.walnut, M.Wood)
+	local globe = part(f, "Globe", Vector3.one * 2, CFrame.new(14, 3.6, -3), Color3.fromRGB(150, 130, 90), M.SmoothPlastic)
+	globe.Shape = Enum.PartType.Ball
+	decor(rod(f, "Ladder", Vector3.new(12, 0, -5.4), Vector3.new(13.2, 9, -6.2), 0.25, C.oak, M.Wood))
+	decor(rod(f, "Ladder", Vector3.new(14, 0, -5.4), Vector3.new(15.2, 9, -6.2), 0.25, C.oak, M.Wood))
+	candle(f, Vector3.new(42, 3, 3.2), true)
+	candle(f, Vector3.new(46, 3, 3.2), true)
+	cobweb(f, Vector3.new(-9, 16.5, -7), 45)
+	cobweb(f, Vector3.new(49, 16.5, 7), 45)
 end
 
 ------------------------------------------------------------------ vault
@@ -708,6 +759,7 @@ function Dressing.dress(root: Model)
 	local rng = Build.random(1907)
 	hall(Build.folder(geo, "HallDressing"), rng)
 	gallery(Build.folder(geo, "GalleryDressing"), rng)
+	library(Build.folder(geo, "LibraryDressing"), rng)
 	servants(Build.folder(geo, "ServantsDressing"), rng)
 	vault(Build.folder(geo, "VaultDressing"), rng)
 	exterior(Build.folder(geo, "Exterior"), interact, rng)

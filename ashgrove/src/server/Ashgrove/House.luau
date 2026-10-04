@@ -111,6 +111,14 @@ local F: { [string]: Finish } = {
 		trim = C.oakDark,
 		skirting = true,
 	},
+	library = {
+		lower = { colour = C.oakDark, material = Enum.Material.Wood, height = 4 },
+		upper = { colour = Color3.fromRGB(38, 48, 58), material = Enum.Material.Fabric },
+		trim = C.frame,
+		skirting = true,
+		dado = true,
+		cornice = true,
+	},
 	housekeeper = {
 		lower = { colour = C.oak, material = Enum.Material.Wood, height = 3.5 },
 		upper = { colour = C.fadedPaper, material = Enum.Material.Fabric },
@@ -284,6 +292,33 @@ function House.build(opts: { replace: boolean? }?): Model
 	local lamps = folder(interact, "Lamps")
 	local pickups = folder(interact, "Pickups")
 	folder(interact, "Glows")
+	local items = folder(interact, "Items")
+	local puzzle = folder(interact, "Puzzle")
+	local pz = {
+		Gate = folder(puzzle, "Gate"),
+		Hall = folder(puzzle, "Hall"),
+		Gallery = folder(puzzle, "Gallery"),
+		Library = folder(puzzle, "Library"),
+		Kitchen = folder(puzzle, "Kitchen"),
+		Vault = folder(puzzle, "Vault"),
+	}
+
+	-- Something to look at closely; the puzzles give it words at runtime.
+	local function spot(f: Instance, name: string, size: Vector3, cf: CFrame, colour: Color3, material: Enum.Material?, attrs: { [string]: any }?): Part
+		local p = part(f, name, size, cf, colour, material)
+		p:SetAttribute("Spot", true)
+		setAttributes(p, attrs)
+		return p
+	end
+
+	-- Something to pick up and carry (Carry). One thing at a time.
+	local function item(itemType: string, label: string, size: Vector3, cf: CFrame, colour: Color3, material: Enum.Material?, attrs: { [string]: any }?): Part
+		local p = part(items, itemType, size, cf, colour, material)
+		p.CanCollide = false
+		setAttributes(p, { ItemType = itemType, Label = label })
+		setAttributes(p, attrs)
+		return p
+	end
 
 	local function zone(name: string, x1: number, x2: number, y1: number, y2: number, z1: number, z2: number, attrs: { [string]: any })
 		local z = box(zones, name, x1, x2, y1, y2, z1, z2, C.black)
@@ -336,12 +371,19 @@ function House.build(opts: { replace: boolean? }?): Model
 		setAttributes(d, attrs)
 	end
 
-	local function crewBody(name: string, x: number, y: number, z: number, yaw: number)
+	-- A first-crew body: head towards its local -Z, feet towards +Z.
+	local function crewBody(name: string, x: number, y: number, z: number, yaw: number, parent: Instance?): Model
+		local body = Instance.new("Model")
+		body.Name = name
 		local cf = CFrame.new(x, y, z) * CFrame.Angles(0, math.rad(yaw), 0)
-		part(geo, name .. "Torso", Vector3.new(2, 0.9, 2.8), cf * CFrame.new(0, 0.45, 0), C.cloth)
-		part(geo, name .. "Legs", Vector3.new(1.8, 0.7, 2.6), cf * CFrame.new(0, 0.35, 2.6), C.cloth)
-		part(geo, name .. "Head", Vector3.new(1, 0.9, 1), cf * CFrame.new(0.3, 0.45, -1.9), Color3.fromRGB(150, 120, 100))
-		part(geo, name .. "Torch", Vector3.new(0.3, 0.3, 1), cf * CFrame.new(1.8, 0.15, -0.6) * CFrame.Angles(0, math.rad(40), 0), C.black)
+		local torso = part(body, "Torso", Vector3.new(2, 0.9, 2.8), cf * CFrame.new(0, 0.45, 0), C.cloth)
+		part(body, "Legs", Vector3.new(1.8, 0.7, 2.6), cf * CFrame.new(0, 0.35, 2.6), C.cloth)
+		part(body, "Head", Vector3.new(1, 0.9, 1), cf * CFrame.new(0.3, 0.45, -1.9), Color3.fromRGB(150, 120, 100))
+		part(body, "Torch", Vector3.new(0.3, 0.3, 1), cf * CFrame.new(1.8, 0.15, -0.6) * CFrame.Angles(0, math.rad(40), 0), C.black)
+		body.PrimaryPart = torso
+		body.WorldPivot = cf
+		body.Parent = parent or geo
+		return body
 	end
 
 	local function dustSheet(x1: number, x2: number, y1: number, y2: number, z1: number, z2: number)
@@ -353,7 +395,8 @@ function House.build(opts: { replace: boolean? }?): Model
 	slab(geo, "Ground", -60, 130, -300, -30, 0, C.ground, Enum.Material.Grass)
 	slab(geo, "Ground", -60, 130, 30, 300, 0, C.ground, Enum.Material.Grass)
 	slab(geo, "Ground", 110, 130, -30, 30, 0, C.ground, Enum.Material.Grass)
-	slab(geo, "Courtyard", -10, 110, -8, 8, 0, C.ground, Enum.Material.Grass)
+	slab(geo, "LibraryFloor", -10, 50, -8, 8, 0, C.floor, Enum.Material.WoodPlanks)
+	slab(geo, "Courtyard", 50, 110, -8, 8, 0, C.ground, Enum.Material.Grass)
 	box(geo, "Drive", -160, -60, 0, 0.1, -6, 6, C.gravel, Enum.Material.Pebble)
 
 	-- Cliff and sea.
@@ -487,7 +530,25 @@ function House.build(opts: { replace: boolean? }?): Model
 	-- Cornelius's pocket piece: the gold ward.
 	box(geo, "GoldCase", -22, -18, 0, 3.5, -26, -22, C.oak, Enum.Material.Wood)
 	pickup("gold", "Hall", Vector3.new(-20, 3.5, -24), true)
-	note("Card_Gold", Vector3.new(-18.8, 3.53, -22.8))
+	box(geo, "CardStand", -17.2, -15.2, 0, 3, -25, -23, C.oak, Enum.Material.Wood)
+	note("Card_Gold", Vector3.new(-16.2, 3.03, -24))
+
+	-- LEVEL 1, the hall: the gold case opens with a key kept "under
+	-- whatever in this hall cost me most" (Puzzles/Hall).
+	local goldGlass = box(pz.Hall, "GoldCaseGlass", -22, -18, 3.5, 5.6, -26, -22, C.glass, Enum.Material.Glass)
+	goldGlass.Transparency = 0.6
+	spot(pz.Hall, "GoldCaseLock", Vector3.new(0.6, 0.6, 0.15), CFrame.new(-20, 2.6, -21.9), C.brass, Enum.Material.Metal, {
+		Accepts = "GoldCaseKey",
+		SocketLabel = "The gold case's lock",
+	})
+	for _, c in { { "044", 8 }, { "061", 13.5 }, { "090", -10 } } do
+		local cushion = spot(pz.Hall, "Case_" .. c[1], Vector3.new(2.4, 0.4, 3.2), CFrame.new(-56.5, 3.4, c[2]), C.black, nil, { SpotId = c[1] })
+		cushion.Transparency = 1
+		cushion.CanCollide = false
+	end
+	note("Card_044", Vector3.new(-53.2, 4.03, -11))
+	note("Card_061", Vector3.new(-52, 4.03, -11))
+	note("Card_090", Vector3.new(-50.8, 4.03, -11))
 
 	for i, c in { { -48, -20 }, { -46, 14 }, { -26, 6 }, { -14, -2 } } do
 		box(geo, "Crate" .. i, c[1] - 2, c[1] + 2, 0, 3, c[2] - 2, c[2] + 2, C.crate, Enum.Material.WoodPlanks)
@@ -511,6 +572,25 @@ function House.build(opts: { replace: boolean? }?): Model
 		LockedText = "The stairs are rotten through. The first crew roped them off.",
 	})
 
+	-- LEVEL 0, the gate and porch: the front door locks itself, and Mrs
+	-- Dunne's spare key is wherever her saying says (Puzzles/Gate).
+	door("FrontDoor", -60.5, -59.5, 0, 12, -4, 4, {
+		Wing = "Hall",
+		StartsLocked = true,
+		LockedText = "Locked. There's a note pinned to it.",
+		Accepts = "FrontDoorKey",
+		SocketLabel = "Front door lock",
+	})
+	local porchNote = note("Porch_Note", Vector3.new(-60.65, 6, 2.6))
+	porchNote.CFrame = CFrame.new(-60.65, 6, 2.6) * CFrame.Angles(0, 0, math.rad(90))
+	spot(pz.Gate, "Horseshoe", Vector3.new(0.2, 1.2, 1.1), CFrame.new(-67.95, 5.5, -5.5), C.iron, Enum.Material.Metal, { SpotId = "horseshoe" })
+	box(geo, "Downpipe", -61.1, -60.6, 0.6, 24, -12.25, -11.75, C.iron, Enum.Material.Metal)
+	spot(pz.Gate, "Drain", Vector3.new(1.4, 0.15, 1.4), CFrame.new(-61.4, 0.08, -12), C.iron, Enum.Material.Metal, { SpotId = "drain" })
+	spot(pz.Gate, "BootScraper", Vector3.new(1.4, 0.8, 0.5), CFrame.new(-62.6, 0.4, 3), C.iron, Enum.Material.Metal, { SpotId = "scraper" })
+	spot(pz.Gate, "PotNorth", Vector3.new(1.6, 1.8, 1.6), CFrame.new(-63.5, 0.9, -7), Color3.fromRGB(120, 70, 50), Enum.Material.Brick, { SpotId = "pot" })
+	spot(pz.Gate, "PotSouth", Vector3.new(1.6, 1.8, 1.6), CFrame.new(-63.5, 0.9, 7), Color3.fromRGB(120, 70, 50), Enum.Material.Brick, { SpotId = "pot" })
+	spot(pz.Gate, "Doormat", Vector3.new(2.4, 0.08, 4), CFrame.new(-61.6, 0.04, 0), Color3.fromRGB(70, 56, 40), Enum.Material.Fabric, { SpotId = "mat" }).CanCollide = false
+
 	marker("Spawn_Van", Vector3.new(-124, 3, 0), Vector3.new(0, 3, 0))
 	marker("Spawn_HallCamp", Vector3.new(-36, 3, 4), Vector3.new(0, 3, 4))
 
@@ -525,23 +605,31 @@ function House.build(opts: { replace: boolean? }?): Model
 		{ at = -19, width = 6, height = 13, sill = 3, glass = true },
 	}
 	wall(geo, "GalleryNorth", "X", -10, 110, -30, 0, 20, galleryWindows, C.stone, Enum.Material.Cobblestone)
-	wall(geo, "GallerySouth", "X", -10, 110, -8, 0, 20, {}, C.stone, Enum.Material.Cobblestone)
+	local gallerySouthGaps = {
+		{ at = 20, width = 5, height = 10 }, -- into the library
+	}
+	wall(geo, "GallerySouth", "X", -10, 110, -8, 0, 20, gallerySouthGaps, C.stone, Enum.Material.Cobblestone)
 	wall(geo, "GalleryEast", "Z", -30, -8, 110, 0, 20, galleryEastGaps, C.stone, Enum.Material.Cobblestone)
 	lineFace(geo, "X", -30, 1, -10, 110, 0, 20, galleryWindows, F.gallery)
-	lineFace(geo, "X", -8, -1, -10, 110, 0, 20, {}, F.gallery)
+	lineFace(geo, "X", -8, -1, -10, 110, 0, 20, gallerySouthGaps, F.gallery)
 	lineFace(geo, "Z", 110, -1, -30, -8, 0, 20, galleryEastGaps, F.gallery)
 	lineFace(geo, "Z", -10, 1, -30, -8, 0, 20, hallEastGaps, F.gallery)
 
 	-- Portraits of the objects' previous owners, mostly under dust sheets.
-	-- Two are torn open at head height: the Dullahan studies faces.
+	-- LEVEL 2: the sheets come off and go back on, and the Dullahan walks
+	-- to whichever faces are showing (Puzzles/Gallery). Two start torn off.
 	for i = 0, 8 do
 		local px = 2 + i * 12
 		box(geo, "Portrait", px - 3, px + 3, 5, 12, -9, -8.5, C.oak, Enum.Material.Wood)
-		if px == 50 or px == 86 then
-			box(geo, "TornSheet", px - 2, px + 2, 0, 0.4, -11, -9.5, C.sheet, Enum.Material.Fabric)
-		else
-			dustSheet(px - 3.2, px + 3.2, 4.6, 12.4, -9.3, -9)
-		end
+		local torn = px == 50 or px == 86
+		local sheet = box(pz.Gallery, "Sheet_" .. i, px - 3.2, px + 3.2, 4.6, 12.4, -9.3, -9, C.sheet, Enum.Material.Fabric)
+		setAttributes(sheet, { PortraitIndex = i, Covered = not torn })
+		local heap = box(sheet, "Heap", px - 2, px + 2, 0, 0.4, -11, -9.5, C.sheet, Enum.Material.Fabric)
+		heap.CanCollide = false
+		heap.Transparency = if torn then 0 else 1
+		sheet.Transparency = if torn then 1 else 0
+		sheet.CanCollide = false
+		marker(string.format("Dullahan_Portrait_%02d", i), Vector3.new(px, 4, -13.5), nil, { Look = Vector3.new(px, 8.5, -8), PortraitIndex = i })
 	end
 	-- Busts under sheets: at a distance, is that a bust or his head?
 	for _, bx in { 12.5, 42.5, 72.5 } do
@@ -556,6 +644,26 @@ function House.build(opts: { replace: boolean? }?): Model
 	setAttributes(whip, { ObjectId = "SpineWhip", EntityId = "Dullahan", Label = "Spine whip", Securable = true })
 	crate("SpineWhip", 102, -12.5, 0)
 
+	-- No lock holds him. The whip's cage is chained to a padlock with no
+	-- keyhole, hung under the last portrait (Puzzles/Gallery).
+	local grille = Instance.new("Model")
+	grille.Name = "Grille"
+	grille.Parent = pz.Gallery
+	for x = 99.5, 108.5, 1.5 do
+		box(grille, "Bar", x - 0.1, x + 0.1, 0, 5.5, -22.6, -22.4, C.iron, Enum.Material.Metal)
+		box(grille, "Bar", x - 0.1, x + 0.1, 0, 5.5, -15.6, -15.4, C.iron, Enum.Material.Metal)
+	end
+	for z = -22.5, -15.5, 1.4 do
+		box(grille, "Bar", 99.4, 99.6, 0, 5.5, z - 0.1, z + 0.1, C.iron, Enum.Material.Metal)
+		box(grille, "Bar", 108.4, 108.6, 0, 5.5, z - 0.1, z + 0.1, C.iron, Enum.Material.Metal)
+	end
+	box(grille, "Top", 99.4, 108.6, 5.5, 5.7, -22.6, -15.4, C.iron, Enum.Material.Metal)
+	for _, w in { { 99.3, 99.7, -22.7, -15.3 }, { 108.3, 108.7, -22.7, -15.3 }, { 99.3, 108.7, -22.7, -22.3 }, { 99.3, 108.7, -15.7, -15.3 } } do
+		box(grille, "Shell", w[1], w[2], 0, 6, w[3], w[4], C.black).Transparency = 1
+	end
+	spot(pz.Gallery, "GrilleLock", Vector3.new(0.7, 0.9, 0.3), CFrame.new(100.4, 4.2, -8.85), C.iron, Enum.Material.Metal, { SpotId = "lock" })
+	Build.decor(Build.rod(geo, "GrilleChain", Vector3.new(100.4, 3.8, -9), Vector3.new(100, 1, -15.4), 0.15, C.iron, Enum.Material.Metal))
+
 	crewBody("PruittBody", 62, 0, -26, 30)
 	note("Memo_Gallery", Vector3.new(59.5, 0.15, -28), "recorder")
 	pickup("ammo", "Gallery", Vector3.new(30, 0, -10))
@@ -563,12 +671,11 @@ function House.build(opts: { replace: boolean? }?): Model
 	pickup("ammo", "Gallery", Vector3.new(-6, 0, -28.5))
 
 	marker("Dullahan_Spawn", Vector3.new(94, 4, -19), Vector3.new(0, 4, -19))
+	-- Window stops. Portrait stops (Dullahan_Portrait_*) count only while
+	-- the portrait is uncovered.
 	local route = {
-		{ 92, -14, Vector3.new(92, 9, -8) },
 		{ 74, -24, Vector3.new(80, 9, -30) },
-		{ 56, -14, Vector3.new(50, 9, -8) },
 		{ 38, -24, Vector3.new(35, 9, -30) },
-		{ 20, -14, Vector3.new(14, 9, -8) },
 		{ 4, -24, Vector3.new(5, 9, -30) },
 	}
 	for i, r in route do
@@ -601,7 +708,10 @@ function House.build(opts: { replace: boolean? }?): Model
 		{ at = 72, width = 3, height = 4, sill = 4 }, -- the rite window fills this
 		{ at = 97, width = 4, height = 4, sill = 4, glass = true },
 	}
-	wall(geo, "CorridorNorth", "X", -10, 110, 8, 0, 12, {}, C.stone, Enum.Material.Cobblestone)
+	local corridorNorthGaps = {
+		{ at = 30, width = 4, height = 9 }, -- from the library
+	}
+	wall(geo, "CorridorNorth", "X", -10, 110, 8, 0, 12, corridorNorthGaps, C.stone, Enum.Material.Cobblestone)
 	wall(geo, "CorridorSouth", "X", -10, 110, 14, 0, 12, corridorSouthGaps, C.stone, Enum.Material.Cobblestone)
 	wall(geo, "WingSouth", "X", -10, 110, 30, 0, 12, wingSouthGaps, C.stone, Enum.Material.Cobblestone)
 	wall(geo, "KitchenScullery", "Z", 14, 30, 30, 0, 12, {}, C.stone, Enum.Material.Cobblestone)
@@ -611,7 +721,7 @@ function House.build(opts: { replace: boolean? }?): Model
 	wall(geo, "CourtyardEast", "Z", -8, 8, 110, 0, 12, {}, C.stone, Enum.Material.Cobblestone)
 
 	-- Corridor.
-	lineFace(geo, "X", 8, 1, -10, 110, 0, 12, {}, F.servants)
+	lineFace(geo, "X", 8, 1, -10, 110, 0, 12, corridorNorthGaps, F.servants)
 	lineFace(geo, "X", 14, -1, -10, 110, 0, 12, corridorSouthGaps, F.servants)
 	lineFace(geo, "Z", -10, 1, 8, 14, 0, 12, hallEastGaps, F.servants)
 	lineFace(geo, "Z", 110, -1, 8, 14, 0, 12, {}, F.servants)
@@ -628,6 +738,50 @@ function House.build(opts: { replace: boolean? }?): Model
 		lineFace(geo, "Z", x1, 1, 14, 30, 0, 12, if x1 == -10 then hallEastGaps else {}, finish)
 		lineFace(geo, "Z", x2, -1, 14, 30, 0, 12, {}, finish)
 	end
+
+	------------------------------------------------------------------ library
+	-- LEVEL 3: the old courtyard, roofed in glass, is Cornelius's library.
+	-- Off the gallery; its far door opens into the servants' corridor
+	-- once its puzzle is solved (Puzzles/Library).
+	wall(geo, "LibraryEast", "Z", -8, 8, 50, 0, 18, {}, C.stone, Enum.Material.Cobblestone)
+	lineFace(geo, "X", -8, 1, -10, 50, 0, 18, gallerySouthGaps, F.library)
+	lineFace(geo, "X", 8, -1, -10, 50, 0, 18, corridorNorthGaps, F.library)
+	lineFace(geo, "Z", -10, 1, -8, 8, 0, 18, hallEastGaps, F.library)
+	lineFace(geo, "Z", 50, -1, -8, 8, 0, 18, {}, F.library)
+	for x = -10, 50, 6 do
+		box(geo, "SkylightBeam", x - 0.3, x + 0.3, 17.6, 18.2, -8, 8, C.frame, Enum.Material.Wood)
+	end
+	local skylight = box(geo, "Skylight", -10, 50, 18.2, 18.4, -8, 8, C.glass, Enum.Material.Glass)
+	skylight.Transparency = 0.6
+	door("LibraryDoor", 17.5, 22.5, 0, 10, -8.5, -7.5, { Wing = "Library", StartsLocked = false })
+	door("LibraryServantsDoor", 28, 32, 0, 9, 7.5, 8.5, {
+		Wing = "ServantsWing",
+		StartsLocked = true,
+		LockedText = "Locked from this side. A servants' passage key would fit it.",
+		Accepts = "ServantsKey",
+		SocketLabel = "The servants' door lock",
+	})
+	-- One bookcase per country Cornelius bought from: a brass plate, an
+	-- acquisitions ledger and a curio box. (Dressing builds the cases.)
+	for _, r in {
+		{ "IRELAND", -4, -1 },
+		{ "WALES", 6, -1 },
+		{ "GREECE", 34, -1 },
+		{ "THE PHILIPPINES", 44, -1 },
+		{ "NORWAY", 4, 1 },
+		{ "ENGLAND", 16, 1 },
+	} do
+		local country, x, side = r[1], r[2], r[3]
+		local id = string.gsub(country, "%s", "")
+		local zc = if side < 0 then -6.8 else 6.8
+		local plate = part(pz.Library, "Plate_" .. id, Vector3.new(3, 0.6, 0.1), CFrame.lookAt(Vector3.new(x, 8.6, zc - side * 0.75), Vector3.new(x, 8.6, zc - side * 5)), C.brass, Enum.Material.Metal)
+		plate.CanCollide = false
+		label(plate, country, Enum.NormalId.Front)
+		note("Ledger_" .. id, Vector3.new(x - 1.2, 3.32, zc), nil, { Country = country })
+		spot(pz.Library, "Box_" .. id, Vector3.new(0.9, 0.6, 0.7), CFrame.new(x + 1.2, 5.16, zc), C.oakDark, Enum.Material.Wood, { Country = country })
+	end
+	box(geo, "LibraryDesk", 41, 47, 0, 3, 2.5, 5.5, C.oakDark, Enum.Material.Wood)
+	note("Library_Journal", Vector3.new(44, 3.03, 4))
 
 	-- Bell board, west end of the corridor.
 	local bellBoard = Instance.new("Model")
@@ -657,13 +811,41 @@ function House.build(opts: { replace: boolean? }?): Model
 	-- Kitchen: where Okafor fell.
 	box(geo, "KitchenTable", -2, 22, 2.8, 3.3, 19, 23, C.oak, Enum.Material.Wood)
 	box(geo, "Range", -9, -3, 0, 5, 24, 29.5, C.iron, Enum.Material.Metal)
-	crewBody("OkaforBody", 12, 0, 26.5, -70)
-	note("Memo_Kitchen", Vector3.new(14.5, 0.15, 25.2), "recorder", { RequiresMourning = true })
+	-- LEVEL 4, the wake (Puzzles/Wake). Okafor lies where he fell; the
+	-- puzzle turns him one of two ways at runtime.
+	local okafor = crewBody("OkaforBody", 10, 0, 25.5, -70, pz.Kitchen)
+	local okCf = CFrame.new(10, 0, 25.5) * CFrame.Angles(0, math.rad(-70), 0)
+	local function bodySocket(name: string, offset: CFrame, attrs: { [string]: any })
+		local p = spot(okafor, name, Vector3.new(1, 0.2, 1), okCf * offset, C.cloth, nil, attrs)
+		p.Transparency = 1
+		p.CanCollide = false
+	end
+	bodySocket("BreastSocket", CFrame.new(0, 1, -0.4), { Accepts = "Salt", SocketLabel = "On his breast" })
+	bodySocket("HeadSocket", CFrame.new(0, 0.1, -3.2), { Accepts = "Candle", SocketLabel = "At his head" })
+	bodySocket("FeetSocket", CFrame.new(0, 0.1, 4.4), { Accepts = "Candle", SocketLabel = "At his feet" })
+	spot(okafor, "Watch", Vector3.new(0.45, 0.2, 0.45), okCf * CFrame.new(-1.15, 0.5, 0.2), C.brass, Enum.Material.Metal, { SpotId = "watch" })
+	spot(okafor, "Keys", Vector3.new(0.6, 0.2, 0.4), okCf * CFrame.new(1.15, 0.5, 0.8), C.brass, Enum.Material.Metal, { SpotId = "keys" })
+	spot(okafor, "SignalMirror", Vector3.new(0.5, 0.1, 0.4), okCf * CFrame.new(-0.6, 0.95, -0.9), C.glass, Enum.Material.Glass, { GlassSpot = "signal" })
+	note("Memo_Kitchen", Vector3.new(15.5, 0.15, 27.5), "recorder", { RequiresMourning = true })
+
+	local clock = spot(pz.Kitchen, "KitchenClock", Vector3.new(0.3, 2.6, 2.6), CFrame.new(29.25, 7.5, 22), C.paper, nil, { SpotId = "clock" })
+	clock.Shape = Enum.PartType.Cylinder
+	local hand = part(clock, "Hand", Vector3.new(0.1, 1.1, 0.15), CFrame.new(29.05, 8.05, 22), C.black)
+	hand.CanCollide = false
+	spot(pz.Kitchen, "ShavingMirror", Vector3.new(1.2, 1.4, 0.1), CFrame.new(16.2, 6.4, 29.3), C.glass, Enum.Material.Glass, { GlassSpot = "shaving" }).Reflectance = 0.5
+	spot(pz.Kitchen, "DresserMirror", Vector3.new(0.1, 1.2, 2.2), CFrame.new(-8.7, 8.6, 16.75), C.glass, Enum.Material.Glass, { GlassSpot = "dresser" }).Reflectance = 0.5
+	spot(pz.Kitchen, "HandMirror", Vector3.new(0.6, 0.06, 0.8), CFrame.new(16.5, 3.33, 20.2), C.glass, Enum.Material.Glass, { GlassSpot = "hand" })
+	for _, wx in { 0, 20 } do
+		local w = spot(pz.Kitchen, "Window_" .. wx, Vector3.new(4, 4, 0.3), CFrame.new(wx, 6, 29.6), C.glass, nil, { WindowAt = wx })
+		w.Transparency = 1
+		w.CanCollide = false
+	end
 	pickup("battery", "Batteries", Vector3.new(20, 3.3, 21))
 	pickup("ammo", "ServantsWing", Vector3.new(-6, 0, 16))
 
 	-- Scullery: Lot 203 and the stairs down.
 	box(geo, "Trough", 34, 44, 0, 3, 14.5, 17, C.stone, Enum.Material.Slate)
+	item("Salt", "Salt tin", Vector3.new(0.7, 0.9, 0.7), CFrame.new(36, 3.45, 15.6), Color3.fromRGB(200, 200, 196), Enum.Material.Metal)
 	box(geo, "Shelf", 56, 59.5, 3, 3.4, 15, 19, C.oak, Enum.Material.Wood)
 	local lantern = part(objects, "HollowLantern", Vector3.new(1, 1.6, 1), CFrame.new(57.5, 4.2, 17), Color3.fromRGB(96, 84, 60), Enum.Material.Metal)
 	setAttributes(lantern, { ObjectId = "HollowLantern", EntityId = "Lampshy", Label = "Hollow lantern", Securable = true })
@@ -688,6 +870,9 @@ function House.build(opts: { replace: boolean? }?): Model
 	-- Housekeeper's room: the wake rite.
 	box(geo, "Desk", 62, 68, 0, 3, 16, 19, C.oak, Enum.Material.Wood)
 	note("Customs", Vector3.new(65, 3.03, 17.5))
+	for _, cx in { 62.8, 63.6 } do
+		item("Candle", "Candle", Vector3.new(0.3, 1, 0.3), CFrame.new(cx, 3.5, 17.6), Color3.fromRGB(220, 210, 180))
+	end
 	local riteHK = Instance.new("Model")
 	riteHK.Name = "Rite_Housekeeper"
 	riteHK:SetAttribute("Wing", "ServantsWing")
@@ -727,7 +912,7 @@ function House.build(opts: { replace: boolean? }?): Model
 	for i, p in lampRoute do
 		marker(string.format("Lampshy_Route_%02d", i), p)
 	end
-	marker("Body_Kitchen", Vector3.new(12, 0, 26.5))
+	marker("Body_Kitchen", Vector3.new(10, 0, 25.5))
 	marker("BansheeKeen_ServantsWing_1", Vector3.new(-6, 0, 19), Vector3.new(30, 0, 18))
 	marker("BansheeKeen_ServantsWing_2", Vector3.new(55, 0, 16), Vector3.new(30, 0, 18))
 	marker("BansheeKeen_ServantsWing_3", Vector3.new(82, 0, 27), Vector3.new(60, 0, 18))
@@ -754,7 +939,31 @@ function House.build(opts: { replace: boolean? }?): Model
 	setAttributes(dybbukBox, { ObjectId = "DybbukBox", Label = "The sealed box", Securable = false })
 	part(geo, "BoxLid", Vector3.new(2, 0.2, 2), CFrame.new(60, -11.3, -9.2) * CFrame.Angles(math.rad(-35), 0, 0), C.oak, Enum.Material.Wood)
 	box(geo, "Lectern", 63, 65, -16, -13, -9, -7, C.oak, Enum.Material.Wood)
-	note("Vault_Ledger", Vector3.new(64, -12.97, -8))
+	note("Vault_Ledger", Vector3.new(61.4, -12.97, -6.6))
+
+	-- LEVEL 5 (Puzzles/Vault): the maker's mark, the torn bill of sale.
+	local mark = spot(pz.Vault, "MakersMark", Vector3.new(1.8, 0.1, 1.6), CFrame.new(60, -11.15, -9.2) * CFrame.Angles(math.rad(-35), 0, 0), C.oak, Enum.Material.Wood, { SpotId = "mark" })
+	mark.Transparency = 1
+	mark.CanCollide = false
+	local lectern = spot(pz.Vault, "LecternSocket", Vector3.new(1.8, 0.1, 1.8), CFrame.new(64, -12.95, -8), C.paper, nil, {
+		Accepts = "BillPiece",
+		SocketLabel = "Lay it on the lectern",
+		Capacity = 3,
+	})
+	lectern.Transparency = 1
+	lectern.CanCollide = false
+	for _, pos in {
+		Vector3.new(44.5, -15.97, 0.8),
+		Vector3.new(50, -13.77, -18.5),
+		Vector3.new(30, -15.97, -14),
+		Vector3.new(76.5, -15.97, 10),
+		Vector3.new(57, -15.97, -4.5),
+		Vector3.new(69.5, -15.97, 24),
+	} do
+		item("BillPiece", "Torn paper", Vector3.new(0.8, 0.05, 0.6), CFrame.new(pos), C.paper, nil, { Candidate = true })
+	end
+	marker("Dybbuk_Spawn", Vector3.new(60, -13, -2), Vector3.new(60, -13, 20))
+	marker("CrewOneVan_Door", Vector3.new(-121, 3, -24))
 
 	local riteVault = Instance.new("Model")
 	riteVault.Name = "Rite_Vault"
@@ -791,6 +1000,7 @@ function House.build(opts: { replace: boolean? }?): Model
 	zone("Housekeeper", 60, 85, -1, 13, 14, 30, { Wing = "ServantsWing", Room = "Housekeeper", Priority = 2 })
 	zone("ServantsHall", 85, 110, -1, 13, 14, 30, { Wing = "ServantsWing", Room = "ServantsHall", Priority = 2 })
 	zone("Vault", 20, 80, -17, -1, -20, 30, { Wing = "Vault", Room = "Vault", Priority = 3 })
+	zone("Library", -10, 50, -1, 19, -8, 8, { Wing = "Library", Room = "Library", Priority = 2 })
 
 	Dressing.dress(root)
 

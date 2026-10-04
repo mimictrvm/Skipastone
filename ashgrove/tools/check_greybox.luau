@@ -173,6 +173,8 @@ local expected = {
 	Lampshy_Spawn = "ServantsWing",
 	Body_Gallery = "Gallery",
 	Body_Kitchen = "ServantsWing",
+	Dybbuk_Spawn = "Vault",
+	CrewOneVan_Door = "Grounds",
 }
 for name, wing in expected do
 	local m = marker(name)
@@ -180,7 +182,7 @@ for name, wing in expected do
 		fail(`{name} is in {wingAt(m.CFrame.Position)}, expected {wing}`)
 	end
 end
-for prefix, wing in { Dullahan_Route_ = "Gallery", Lampshy_Route_ = "ServantsWing" } do
+for prefix, wing in { Dullahan_Route_ = "Gallery", Dullahan_Portrait_ = "Gallery", Lampshy_Route_ = "ServantsWing" } do
 	local list = markers(prefix)
 	if #list < 2 then
 		fail("too few " .. prefix .. " markers")
@@ -220,7 +222,7 @@ for _, name in { "Dullahan_Spawn", "Lampshy_Spawn" } do
 end
 
 -- Interactives must not be buried.
-for _, folderName in { "Notes", "Pickups", "Objects" } do
+for _, folderName in { "Notes", "Pickups", "Objects", "Items" } do
 	for _, p in house.Interact[folderName]:GetChildren() do
 		local hit = solidAt(p.CFrame.Position, 0.02)
 		if hit then
@@ -256,7 +258,7 @@ local function reachable(position): boolean
 	return false
 end
 local doorsFolder = house.Interact.Doors
-for _, folderName in { "Notes", "Pickups", "Objects", "Crates" } do
+for _, folderName in { "Notes", "Pickups", "Objects", "Crates", "Items" } do
 	for _, p in house.Interact[folderName]:GetChildren() do
 		if p:IsA("BasePart") and not reachable(p.CFrame.Position) then
 			fail(`{folderName}/{p.Name} at {p.CFrame.Position} has nowhere clear to stand within reach`)
@@ -268,6 +270,11 @@ for _, site in house.Interact.Rites:GetChildren() do
 		if p:IsA("BasePart") and not reachable(p.CFrame.Position) then
 			fail(`{site.Name}/{p.Name} has nowhere clear to stand within reach`)
 		end
+	end
+end
+for _, p in house.Interact.Puzzle:GetDescendants() do
+	if p:IsA("BasePart") and (p:GetAttribute("Spot") or p:GetAttribute("Accepts")) and not reachable(p.CFrame.Position) then
+		fail(`Puzzle/{p.Parent and p.Parent.Name}/{p.Name} has nowhere clear to stand within reach`)
 	end
 end
 for _, p in doorsFolder:GetChildren() do
@@ -307,7 +314,7 @@ do
 end
 
 -- The rooms the story names exist as zones.
-for _, room in { "Hall", "Gallery", "Corridor", "Kitchen", "Scullery", "Housekeeper", "ServantsHall", "Vault", "Van" } do
+for _, room in { "Hall", "Gallery", "Library", "Corridor", "Kitchen", "Scullery", "Housekeeper", "ServantsHall", "Vault", "Van" } do
 	if not house.Zones:FindFirstChild(room) then
 		fail("missing zone " .. room)
 	end
@@ -325,6 +332,10 @@ local routes = {
 	{ "corridor to servants' hall", Vector3.new(97, 2.5, 11), Vector3.new(97, 2.5, 20) },
 	{ "scullery to stair head", Vector3.new(33, 2.5, 18), Vector3.new(33, 2.5, 27) },
 	{ "vault floor, stair foot to box", Vector3.new(60, -13.5, 27), Vector3.new(60, -13.5, -4) },
+	{ "gallery into library", Vector3.new(20, 2.5, -12), Vector3.new(20, 2.5, 0) },
+	{ "across the library", Vector3.new(20, 2.5, 0), Vector3.new(30, 2.5, 0) },
+	{ "library into corridor", Vector3.new(30, 2.5, 0), Vector3.new(30, 2.5, 11) },
+	{ "porch to front door", Vector3.new(-75, 2.5, 0), Vector3.new(-55, 2.5, 0) },
 }
 for _, r in routes do
 	segmentClear(r[2], r[3], r[1])
