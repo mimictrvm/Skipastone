@@ -11,3 +11,11 @@ Crystal Golem), plus the 3-second replay used after a player's first find.
 The layout follows `default.project.json` (Rojo). Without Rojo, copy
 `src/shared/Cutscenes` into ReplicatedStorage, `src/server/*` into
 ServerScriptService and `src/client/*` into StarterPlayerScripts.
+
+## Ashgrove House (horror)
+
+A separate Roblox project in [`ashgrove/`](ashgrove/README.md): a playable
+greybox of Story 1, built to the creative direction in
+[docs/ASHGROVE_DIRECTION.md](docs/ASHGROVE_DIRECTION.md). To try it, paste
+[`ashgrove/AshgroveInstaller.lua`](ashgrove/AshgroveInstaller.lua) into
+Studio's Command Bar.

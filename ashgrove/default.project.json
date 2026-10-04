@@ -1,0 +1,23 @@
+{
+  "name": "Ashgrove",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Ashgrove": {
+        "$path": "src/shared/Ashgrove"
+      }
+    },
+    "ServerScriptService": {
+      "Ashgrove": {
+        "$path": "src/server/Ashgrove"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "AshgroveClient": {
+          "$path": "src/client/AshgroveClient"
+        }
+      }
+    }
+  }
+}

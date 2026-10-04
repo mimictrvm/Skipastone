@@ -4,6 +4,8 @@
 
 **Built from:** *Horror Direction Analysis* (the comparative research) and *Ashgrove House: Art & Model Brief* (setting, premise, Story 1 beats, technical specs).
 
+**Built to it:** a playable Story 1 greybox in [`ashgrove/`](../ashgrove/README.md). The Lamp-shy there is a stand-in for open decision #1.
+
 **How to read it.** Statements are decisions. Numbers are **starting values to tune in playtests**, not final. Where the two inputs disagreed, section 2 records which one won and why. Undecided items are listed in section 15. Nothing outside that section is open.
 
 ---
