@@ -4,23 +4,33 @@
 	edit this file; edit the source and run the script again.
 
 	HOW TO USE
-	  1. Open a place in Studio (File > New > Baseplate is fine).
+	  1. Open your place in Studio (or File > New > Baseplate).
 	  2. View > Command Bar.
-	  3. Paste this whole file into the Command Bar and press Enter.
+	  3. Select ALL of this file (Ctrl+A), copy it (Ctrl+C), click in the
+	     Command Bar, paste (Ctrl+V) and press Enter.
 	  4. Press Play.
 
 	It creates (replacing older copies):
-	  ReplicatedStorage.Ashgrove                       shared modules
-	  ServerScriptService.Ashgrove                     server Script + modules
+	  ReplicatedStorage.Ashgrove                         shared modules
+	  ServerScriptService.Ashgrove                       server Script + modules
 	  StarterPlayer.StarterPlayerScripts.AshgroveClient  client LocalScript
-	and builds the house as Workspace.AshgroveHouse, removing the
-	template's Baseplate and SpawnLocation (the Baseplate fills the cellar).
+	and builds the house as Workspace.AshgroveHouse, removing a template
+	Baseplate and SpawnLocation (the Baseplate fills the cellar).
 	One Ctrl+Z undoes the whole install.
 
-	If the Command Bar won't take a paste this long: paste it into a new
-	Script in ServerStorage instead, right-click the Script, choose
-	"Save as Local Plugin...", then click Plugins > Ashgrove > Install.
+	Too long for the Command Bar? Use the smaller files in
+	ashgrove/installer-parts/ instead: paste part 1, press Enter, then
+	part 2, and so on, in order.
 ]]
+
+local REMOVE_OLD = true
+local FINISH = true
+local DONE_MESSAGE = "[Ashgrove] Installed. Press Play. (Studio keys: F6 next chapter, F7 keen, F8 refill.)"
+local ROOTS = {
+	{ service = {"ReplicatedStorage"}, name = "Ashgrove" },
+	{ service = {"ServerScriptService"}, name = "Ashgrove" },
+	{ service = {"StarterPlayer", "StarterPlayerScripts"}, name = "AshgroveClient" },
+}
 
 local FILES = {
 	{ service = {"ReplicatedStorage"}, path = {"Ashgrove"}, class = "Folder", source = nil },
@@ -8286,7 +8296,7 @@ return Torch
 
 local function child(parent: Instance, name: string): Instance
 	local found = parent:FindFirstChild(name)
-	assert(found, `[Ashgrove] expected {parent:GetFullName()}.{name}`)
+	assert(found, `[Ashgrove] expected {parent:GetFullName()}.{name} (paste the parts in order, starting from part 1)`)
 	return found :: Instance
 end
 
@@ -8308,9 +8318,9 @@ local function install()
 	end
 
 	-- Remove older installs first.
-	for _, f in FILES do
-		if #f.path == 1 then
-			local old = serviceAt(f.service):FindFirstChild(f.path[1])
+	if REMOVE_OLD then
+		for _, r in ROOTS do
+			local old = serviceAt(r.service):FindFirstChild(r.name)
 			if old then
 				old:Destroy()
 			end
@@ -8322,6 +8332,10 @@ local function install()
 		for i = 1, #f.path - 1 do
 			parent = child(parent, f.path[i])
 		end
+		local existing = parent:FindFirstChild(f.path[#f.path])
+		if existing then
+			existing:Destroy()
+		end
 		local inst = Instance.new(f.class)
 		inst.Name = f.path[#f.path]
 		if f.source then
@@ -8330,14 +8344,16 @@ local function install()
 		inst.Parent = parent
 	end
 
-	for _, name in { "Baseplate", "SpawnLocation" } do
-		local leftover = workspace:FindFirstChild(name)
-		if leftover and leftover:IsA("BasePart") then
-			leftover:Destroy()
+	if FINISH then
+		for _, name in { "Baseplate", "SpawnLocation" } do
+			local leftover = workspace:FindFirstChild(name)
+			if leftover and leftover:IsA("BasePart") then
+				leftover:Destroy()
+			end
 		end
-	end
-	if not workspace:FindFirstChild("AshgroveHouse") then
-		require(game:GetService("ServerScriptService").Ashgrove.House).build()
+		if not workspace:FindFirstChild("AshgroveHouse") then
+			require(game:GetService("ServerScriptService").Ashgrove.House).build()
+		end
 	end
 
 	if recording then
@@ -8345,7 +8361,7 @@ local function install()
 			ChangeHistoryService:FinishRecording(recording, Enum.FinishRecordingOperation.Commit)
 		end)
 	end
-	print("[Ashgrove] Installed. Press Play. (Studio keys: F6 next chapter, F7 keen, F8 refill.)")
+	print(DONE_MESSAGE)
 end
 
 if plugin then

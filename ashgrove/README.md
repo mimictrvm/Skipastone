@@ -13,16 +13,23 @@ Story 1, playable, on a dressed map of Ashgrove House. It's built to [the creati
 
 ## Install it in Studio
 
-### 1. Paste one file (easiest)
+### 1. Copy and paste (easiest)
 
-1. Open **your game's place** in Studio, or **File > New > Baseplate** to try it on its own.
-2. Open **View > Command Bar**.
-3. Open [`AshgroveInstaller.lua`](AshgroveInstaller.lua), copy **all** of it, paste it into the Command Bar and press **Enter**.
-4. Press **Play**.
+**Get the text.** Either:
+- open [`AshgroveInstaller.lua`](AshgroveInstaller.lua) on GitHub and click **Copy raw file** (the copy icon at the top right of the file); or
+- download the file, open it in **Notepad** (right-click > Open with > Notepad), and press **Ctrl+A** then **Ctrl+C**.
+
+**Paste it into Studio.**
+1. Open your place in Studio (or **File > New > Baseplate**).
+2. Turn on **View > Command Bar** (and **View > Output**, to see messages).
+3. Click in the Command Bar, press **Ctrl+V**, then **Enter**.
+4. When Output says `[Ashgrove] Installed`, press **Play**.
+
+**If that one is too big** (Studio freezes, or the paste gets cut off), use the eight smaller files in [`installer-parts/`](installer-parts) instead. Paste **part 1**, press Enter, and wait for Output to say `part 1 of 8 done`. Then do part 2, and so on in order. Part 8 builds the house.
 
 The installer adds three script trees (below) and builds the house as `Workspace.AshgroveHouse`. It also removes a template `Baseplate` if there is one, because its floor fills the cellar. One Ctrl+Z undoes the install. Running it again updates the scripts and leaves your edits to the house alone.
 
-If the Command Bar won't take a paste that long, there's a fallback. Paste the file into a new **Script** in ServerStorage, right-click it, choose **Save as Local Plugin…**, then click **Plugins > Ashgrove > Install**.
+The last resort, for when no paste works: paste the full file into a new **Script** in ServerStorage, right-click it, choose **Save as Local Plugin…**, then click **Plugins > Ashgrove > Install**.
 
 ### 2. Rojo
 
@@ -169,7 +176,7 @@ Gunshot sounds are your gun's.
 
 ## Tools
 
-- **`python3 tools/build_installer.py`** regenerates `AshgroveInstaller.lua` from `src/`. Run it after every change.
+- **`python3 tools/build_installer.py`** regenerates `AshgroveInstaller.lua` and `installer-parts/` from `src/`. Run it after every change.
 - **`lune run tools/check_greybox.luau`** builds the house outside Studio and checks it. It needs [Lune](https://lune-org.github.io). It checks:
   - markers, zones and walking routes;
   - stair headroom and the gallery sight line;

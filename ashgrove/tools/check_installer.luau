@@ -3,6 +3,7 @@
 
 	    rojo build default.project.json -o build/scripts.rbxlx
 	    lune run tools/check_installer.luau AshgroveInstaller.lua build/scripts.rbxlx
+	    lune run tools/check_installer.luau installer-parts/*.lua build/scripts.rbxlx
 
 	Runs the installer against an empty DataModel and compares the tree it
 	makes (names, classes, source sizes) with the one Rojo builds.
@@ -32,8 +33,11 @@ env.require = function(module)
 	return loaded[module]
 end
 
-local src = fs.readFile(process.args[1])
-luau.load(src, { debugName = "installer", environment = env })()
+-- Every argument but the last is an installer file, run in order (the
+-- split parts can be checked this way too).
+for i = 1, #process.args - 1 do
+	luau.load(fs.readFile(process.args[i]), { debugName = process.args[i], environment = env })()
+end
 
 local function tree(root, prefix, out)
 	for _, c in root:GetChildren() do
@@ -49,7 +53,7 @@ tree(game:GetService("ServerScriptService"), "SSS/", mine)
 tree(sps, "SPS/", mine)
 table.sort(mine)
 
-local place = roblox.deserializePlace(fs.readFile(process.args[2]))
+local place = roblox.deserializePlace(fs.readFile(process.args[#process.args]))
 local theirs = {}
 tree(place:GetService("ReplicatedStorage"), "RS/", theirs)
 tree(place:GetService("ServerScriptService"), "SSS/", theirs)
