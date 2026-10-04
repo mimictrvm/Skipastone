@@ -630,7 +630,7 @@ class Animator:
     Pose values are rotations expressed about the *rest pose's* armature axes
     (X = creature's left, -Y = its front, Z = up), applied hierarchically:
     a child's rotation is carried along by its parents.  '@root' offsets
-    HumanoidRootPart in studs (in place: no travel).
+    HumanoidRootNode in studs (in place: no travel).
     """
 
     def __init__(self, arm):
@@ -640,7 +640,7 @@ class Animator:
         self.dir = {b.name: (b.tail_local - b.head_local).normalized() for b in arm.data.bones}
         self.head = {b.name: b.head_local.copy() for b in arm.data.bones}
         self.parent = {b.name: (b.parent.name if b.parent else None) for b in arm.data.bones}
-        self.root_bone = 'HumanoidRootPart'
+        self.root_bone = 'HumanoidRootNode'
 
     def chain(self, bone):
         out = []
@@ -741,7 +741,73 @@ def act_fcurves(act):
 
 
 # --------------------------------------------------------------------- export
+# FBX axis conversion for Forward -Z, Up Y: Blender +Z (up) -> +Y, Blender +Y -> -Z.
+AXIS_TO_FBX = Matrix(((1, 0, 0, 0), (0, 0, 1, 0), (0, -1, 0, 0), (0, 0, 0, 1)))  # exact -90 deg about X
+_FBX_PATCHED = False
+
+
+def _patch_fbx_exporter():
+    """Keep skinned meshes as children of the armature node in the FBX.
+
+    Blender's exporter deliberately writes meshes bound to an armature with no
+    parent (scene root).  Roblox then builds a joint from the body mesh to
+    itself.  Our armature and meshes are both identity in the file, so making
+    the armature the FBX parent changes no transform.
+    """
+    global _FBX_PATCHED
+    if _FBX_PATCHED:
+        return
+    import inspect
+    from io_scene_fbx import export_fbx_bin as efb
+    src = inspect.getsource(efb.fbx_data_from_scene)
+    old = 'and (par_obj, ob_obj) not in arm_parents:'
+    assert old in src, 'FBX exporter changed: update _patch_fbx_exporter'
+    src = src.replace(old, 'and (KEEP_ARMATURE_CHILDREN or (par_obj, ob_obj) not in arm_parents):')
+    efb.KEEP_ARMATURE_CHILDREN = True
+    exec(compile(src, efb.__file__, 'exec'), efb.__dict__)
+    _FBX_PATCHED = True
+
+
+class RobloxSpace:
+    """Context manager: bakes the FBX axis conversion into the mesh and bone data.
+
+    Inside the block the rig's data is rotated by AXIS_TO_FBX and the armature
+    object carries the inverse, so the scene looks unchanged in Blender but the
+    exporter (Forward -Z, Up Y) writes the armature, the Root bone and the mesh
+    nodes with identity transforms.  Pose-bone animation is bone-local, so the
+    clips are unaffected.  Everything is restored on exit.
+    """
+
+    def __init__(self, arm, meshes):
+        self.arm, self.meshes = arm, meshes
+
+    def _apply(self, m):
+        for me in self.meshes:
+            me.data.transform(m)
+            me.data.update()
+        self.arm.data.transform(m)
+
+    def __enter__(self):
+        for o in [self.arm] + self.meshes:
+            assert o.matrix_world.is_identity if hasattr(o.matrix_world, 'is_identity') else \
+                o.matrix_world == Matrix.Identity(4), f'{o.name} must have identity transforms before export'
+        self._apply(AXIS_TO_FBX)
+        self.arm.matrix_world = AXIS_TO_FBX.inverted()
+        bpy.context.view_layer.update()
+        return self
+
+    def __exit__(self, *exc):
+        self.arm.matrix_world = Matrix.Identity(4)
+        self._apply(AXIS_TO_FBX.inverted())
+        bpy.context.view_layer.update()
+        return False
+
+
 def export_fbx(path, objs, action=None, anim=False):
+    """Roblox export contract: Forward -Z, Up Y, Apply Unit, FBX Units Scale
+    (1 Blender unit = 1 stud, no x100), no leaf bones, armature as a Null.
+    Call inside `RobloxSpace` so the armature node is identity."""
+    _patch_fbx_exporter()
     activate(objs[0])
     for o in objs:
         o.select_set(True)
@@ -755,19 +821,33 @@ def export_fbx(path, objs, action=None, anim=False):
                 pb.rotation_quaternion = Quaternion()
                 pb.location = (0, 0, 0)
     s = bpy.context.scene
+    s.unit_settings.system = 'METRIC'
+    s.unit_settings.scale_length = 1.0
     if action is not None:
         s.frame_start, s.frame_end = 1, int(action['frames']) + (1 if action['loop'] else 0)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     bpy.ops.export_scene.fbx(
         filepath=path, use_selection=True, object_types={'ARMATURE', 'MESH'},
-        apply_unit_scale=False, global_scale=1.0, apply_scale_options='FBX_SCALE_NONE',
-        axis_forward='-Z', axis_up='Y', use_mesh_modifiers=False, mesh_smooth_type='FACE',
+        apply_unit_scale=True, global_scale=1.0, apply_scale_options='FBX_SCALE_UNITS',
+        axis_forward='-Z', axis_up='Y', bake_space_transform=False,
+        use_mesh_modifiers=False, mesh_smooth_type='FACE',
         add_leaf_bones=False, primary_bone_axis='Y', secondary_bone_axis='X',
         armature_nodetype='NULL', use_armature_deform_only=False,
         bake_anim=anim, bake_anim_use_all_actions=False, bake_anim_use_nla_strips=False,
         bake_anim_force_startend_keying=True, bake_anim_simplify_factor=0.0,
         path_mode='STRIP', embed_textures=False)
+    s.unit_settings.system = 'NONE'
     log(f'  wrote {os.path.relpath(path, ROOT)}')
+
+
+def export_roblox(asset_dir, asset, arm, meshes, clips):
+    """Model + one FBX per clip, all in Roblox space."""
+    with RobloxSpace(arm, meshes):
+        export_fbx(os.path.join(asset_dir, f'{asset}.fbx'), [arm] + meshes, action=None)
+        for cname, act in clips:
+            export_fbx(os.path.join(asset_dir, 'Animations', f'{asset}_Anim_{cname}.fbx'), [arm], action=act,
+                       anim=True)
+    arm.animation_data.action = None
 
 
 # --------------------------------------------------------------------- render

@@ -86,8 +86,8 @@ def drip_pts(i):
 def bones():
     b = [
         dict(name='Root', head=J['root'], tail=J['root'] + v3(0, 0, 0.6), deform=False),
-        dict(name='HumanoidRootPart', head=J['hrp'], tail=J['hrp'] + v3(0, 0, 0.5), parent='Root', deform=False),
-        dict(name='Hips', head=J['pelvis'], tail=J['waist'], parent='HumanoidRootPart'),
+        dict(name='HumanoidRootNode', head=J['hrp'], tail=J['hrp'] + v3(0, 0, 0.5), parent='Root', deform=False),
+        dict(name='Hips', head=J['pelvis'], tail=J['waist'], parent='HumanoidRootNode'),
         dict(name='Spine', head=J['waist'], tail=J['chest'], parent='Hips'),
         dict(name='Chest', head=J['chest'], tail=J['neck1'], parent='Spine'),
         dict(name='Neck1', head=J['neck1'], tail=J['neck2'], parent='Chest'),

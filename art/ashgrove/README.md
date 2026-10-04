@@ -32,23 +32,45 @@ Also included:
 
 Sizes are taken from the bind pose. The width of the bipeds is their A-pose arm span.
 
-- **Scale and axes:** 1 Blender unit = 1 stud (Blender's FBX unit is set to centimetres, which matches Roblox's own Blender setup). Y-up, origin at the base centre between the feet. Creatures face Blender's −Y with the default FBX axes (−Z forward, Y up), the same convention as Roblox's own Blender avatar templates.
-- **Rig:** `Root` at the feet → `HumanoidRootPart` at the hips (neither deforms) → `Hips` → … Skinned, at most 4 influences per vertex, no unweighted vertices.
+- **Export settings:** Forward −Z, Up Y, Apply Unit, FBX Units Scale (scale 1.0, no ×100), no leaf bones, armature exported as a Null.
+- **Scale:** 1 Blender unit = 1 stud. The file is marked as metres with node scale 1, so **import at scale 1**: no 0.01 factor.
+- **Transforms:** the axis conversion is baked into the mesh and bone data. The rig node, both mesh nodes and the `Root` bone are identity in every file; the rig node shows about 0.000004° of float rounding. `Root` carries no rotation keys in any clip.
+- **Hierarchy:** every mesh is a child of the rig node, so the importer attaches it to the root.
+- **Facing:** origin at the base centre between the feet, Y up.
+- **Rig:** `Root` at the feet → `HumanoidRootNode` at the hips → `Hips` → …
+  - Neither `Root` nor `HumanoidRootNode` deforms.
+  - The hips bone is named `HumanoidRootNode` (Roblox's own skinned-rig name), so it can't collide with the `HumanoidRootPart` part Roblox creates.
+  - Skinned with at most 4 influences per vertex and no unweighted vertices.
 - **Materials:** PBR for `SurfaceAppearance`. No lighting is baked into the colour maps. Small glow parts (eyes, the Demon's throat) are separate meshes meant for **Neon**.
 
 ## Importing into Roblox Studio
 
 1. **Model:** use *File → Import 3D* and pick `AH_Ent_<Name>.fbx`.
    - Rig type: *Custom*. Keep *Import Only As Model* on.
-   - If the size looks wrong, set *File General → Scale Unit = Stud*. Each entity's expected height is in the table above.
+   - Import at scale 1. Each entity should come in at the height in the table above.
    - If it imports facing backwards, flip *World Forward*.
 2. **Textures:** upload the four PNGs from `Textures/`. Then add a `SurfaceAppearance` to each textured MeshPart: `ColorMap` = `_Color`, `NormalMap` = `_Normal`, `RoughnessMap` = `_Roughness`, `MetalnessMap` = `_Metalness`.
    - The Dullahan's body and carried head share one texture set.
    - The Demon also ships `_Emissive.png` (an ember-crack mask). If your SurfaceAppearance supports an emissive mask, plug it in with an orange tint; otherwise the cracks already read as bright orange in the colour map.
 3. **Glow meshes** (`*_Glow`, `*_HeadGlow`): set `Material = Neon` and the colour from the entity section below. These parts take no SurfaceAppearance.
-4. **Animations:** select the imported rig and open *Animation Editor → ⋯ → Import → From FBX Animation*. Pick a clip from `Animations/`, then publish it. Play clips through an `AnimationController` + `Animator` (or a Humanoid's Animator). Clips are in place: your movement code moves the root.
+4. **Animations:** select the imported rig and open *Animation Editor → ⋯ → Import → From File / From FBX Animation*. Pick a clip from `Animations/`, then publish it. Play clips through an `AnimationController` + `Animator` (or a Humanoid's Animator). Clips are in place: your movement code moves the root.
 
-These files were built and re-imported in Blender to check them. They have **not yet been opened in Roblox Studio itself**, so please do a first import pass and tell me if anything comes in wrong. Usual suspects: the scale unit, facing direction, or bone orientation on animation import.
+### How the files are checked
+
+These checks run outside Roblox Studio:
+
+- `tools/inspect_fbx.py <file.fbx>` reads each file directly. It prints the unit scale, every node's parent and transform, and the `Root` / `HumanoidRootNode` rotation keys.
+- `tools/verify_anim.py <Name>` re-imports every clip and compares each joint's world position with the source animation. All 40 clips match within 0.0003 studs.
+
+### Export history
+
+**Re-export of Oct 4, 2026.** This followed the first Studio import, and fixed three problems:
+
+- Clips imported rotated (rig node −90°, `Root` keyed 90°).
+- Models imported 100× too large.
+- The body mesh got a Motor6D joined to itself.
+
+The meshes, UVs, textures and animation are unchanged. `tools/reexport.py` re-exports from the `.blend` sources.
 
 ---
 
@@ -199,6 +221,9 @@ cd art/ashgrove/tools
 python3 build_dybbuk.py --preview              # ~1 min: sculpt check → Entities/Dybbuk/Review/_preview.png
 python3 build_dybbuk.py                        # ~3-4 min: full build (mesh, bake, rig, clips, renders)
 python3 build_dybbuk.py --skip-bake --anim-sheet-only   # iterate on animation only
+python3 reexport.py Dybbuk                     # re-export FBX from Source/*.blend only (seconds)
+python3 inspect_fbx.py ../Entities/Dybbuk/AH_Ent_Dybbuk.fbx   # check nodes, scale, Root keys
+python3 verify_anim.py Dybbuk                  # round-trip every clip against the source
 ```
 
 How the pipeline works:
@@ -209,7 +234,7 @@ How the pipeline works:
    - bakes Color / Roughness / Metalness / Normal (and Emissive) from procedural materials
    - skins it from the primitive ownership
    - keys the clips, using IK and follow-through helpers from `motion.py`
-   - exports the FBX files
+   - exports the FBX files, baking the axis conversion into the data (`blendkit.RobloxSpace`) and keeping meshes under the rig node
 3. **Renders:** `review.py` renders the review sheets.
 
 The `.blend` in each `Source/` folder is a normal Blender file if you'd rather hand-edit.

@@ -20,7 +20,8 @@ FAST = '--fast' in sys.argv
 
 
 def out_dir(name):
-    return os.path.join(bk.ROOT, 'Entities', name)
+    base = os.environ.get('AH_OUT') or os.path.join(bk.ROOT, 'Entities')  # AH_OUT: test builds elsewhere
+    return os.path.join(base, name)
 
 
 def camel(g):
@@ -143,9 +144,7 @@ def build(C):
                       for c, a in clips}
 
     # ---------------------------------------------------------- export
-    bk.export_fbx(os.path.join(od, f'{asset}.fbx'), [arm] + meshes, action=None)
-    for cname, act in clips:
-        bk.export_fbx(os.path.join(od, 'Animations', f'{asset}_Anim_{cname}.fbx'), [arm], action=act, anim=True)
+    bk.export_roblox(od, asset, arm, meshes, clips)
 
     with open(os.path.join(od, 'Source', 'stats.json'), 'w') as f:
         json.dump(stats, f, indent=1)

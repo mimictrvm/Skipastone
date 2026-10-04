@@ -86,8 +86,8 @@ def whip_joint(k):
 def bones():
     b = [
         dict(name='Root', head=J['root'], tail=J['root'] + v3(0, 0, 0.6), deform=False),
-        dict(name='HumanoidRootPart', head=J['hrp'], tail=J['hrp'] + v3(0, 0, 0.5), parent='Root', deform=False),
-        dict(name='Hips', head=J['pelvis'], tail=J['waist'], parent='HumanoidRootPart'),
+        dict(name='HumanoidRootNode', head=J['hrp'], tail=J['hrp'] + v3(0, 0, 0.5), parent='Root', deform=False),
+        dict(name='Hips', head=J['pelvis'], tail=J['waist'], parent='HumanoidRootNode'),
         dict(name='Spine', head=J['waist'], tail=J['chest'], parent='Hips'),
         dict(name='Chest', head=J['chest'], tail=J['neck'], parent='Spine'),
         dict(name='Neck', head=J['neck'], tail=J['necktop'], parent='Chest'),
@@ -834,7 +834,7 @@ def clips(an):
     def van_base(t):
         def turn():
             p = {'@root': (0, 0.1, -0.3)}
-            p['HumanoidRootPart'] = (0, 0, 70)
+            p['HumanoidRootNode'] = (0, 0, 70)
             torso(p, bow=10, twist=20)
             hold_arms(an, p, lout=0.5, rout=0.5)
             legs(an, p, {'L': ankle('L', 0.0, 0.0, 0), 'R': ankle('R', 0.0, 0.0, 0)})
@@ -843,7 +843,7 @@ def clips(an):
         def sunk():
             p = turn()
             p['@root'] = (0, 0.1, -3.4)
-            p['HumanoidRootPart'] = (0, 0, 140)
+            p['HumanoidRootNode'] = (0, 0, 140)
             return p
         st = stand_base()
         return bk.track([(0, st), (0.35, turn()), (1.0, sunk(), 'in')])(t)

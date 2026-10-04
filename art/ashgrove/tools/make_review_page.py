@@ -252,10 +252,10 @@ footer { padding-block: 40px 0; color: var(--dust); font-size: 14px; }
   <section class="import" aria-labelledby="imp-h">
     <h3 id="imp-h">Bringing them into Studio</h3>
     <ol>
-      <li><strong>Import the model.</strong> Use File → Import 3D with <span class="mono">AH_Ent_&lt;Name&gt;.fbx</span>, rig type Custom. Files are authored at 1 unit = 1 stud. If the height doesn't match the table above, set Scale Unit to Stud.</li>
+      <li><strong>Import the model.</strong> Use File → Import 3D with <span class="mono">AH_Ent_&lt;Name&gt;.fbx</span>, rig type Custom. Files are authored at 1 unit = 1 stud: import at scale 1, with no 0.01 factor. Each entity should match the height in the table above.</li>
       <li><strong>Add the textures.</strong> Give each textured MeshPart a SurfaceAppearance with Color, Normal, Roughness and Metalness from <span class="mono">Textures/</span>. The Dullahan's head shares the body's set.</li>
       <li><strong>Set up the glow parts.</strong> Set Material to Neon on <span class="mono">*_Glow</span> and <span class="mono">*_HeadGlow</span>, using the colours listed above.</li>
-      <li><strong>Import the animations.</strong> In the Animation Editor, choose Import → From FBX Animation for each file in <span class="mono">Animations/</span>, then publish and play through an Animator.</li>
+      <li><strong>Import the animations.</strong> In the Animation Editor, choose Import → From File for each file in <span class="mono">Animations/</span>, then publish and play through an Animator.</li>
       <li><strong>Dullahan photos.</strong> Hide <span class="mono">AH_Ent_Dullahan_Head</span> and <span class="mono">_HeadGlow</span> in the photo render, and it appears headless.</li>
     </ol>
     <p>The full notes, sources and the procedural pipeline that rebuilds everything are in <span class="mono">art/ashgrove/</span> on the <span class="mono">claude/new-session-qygf32</span> branch.</p>
