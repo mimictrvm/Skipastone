@@ -845,8 +845,10 @@ def export_roblox(asset_dir, asset, arm, meshes, clips):
     with RobloxSpace(arm, meshes):
         export_fbx(os.path.join(asset_dir, f'{asset}.fbx'), [arm] + meshes, action=None)
         for cname, act in clips:
-            export_fbx(os.path.join(asset_dir, 'Animations', f'{asset}_Anim_{cname}.fbx'), [arm], action=act,
-                       anim=True)
+            # The skinned meshes ride along so each clip carries the bind pose: importers
+            # (Roblox included) can then store motion relative to rest, not full local rotations.
+            export_fbx(os.path.join(asset_dir, 'Animations', f'{asset}_Anim_{cname}.fbx'), [arm] + meshes,
+                       action=act, anim=True)
     arm.animation_data.action = None
 
 

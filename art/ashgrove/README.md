@@ -10,7 +10,7 @@ Each entity comes with:
 | Concept description + reference sheet (front / side / back) | this README + `Entities/<Name>/Review/AH_Ent_<Name>_RefSheet.png` |
 | Model as FBX in studs | `Entities/<Name>/AH_Ent_<Name>.fbx` (rig + skinned meshes) |
 | PBR textures (colour, normal, roughness, metalness) | `Entities/<Name>/Textures/` — 1024², normal map OpenGL (+Y) |
-| Rigged model + animations as separate FBX clips | `Entities/<Name>/Animations/AH_Ent_<Name>_Anim_<Clip>.fbx` (30 fps, in place) |
+| Rigged model + animations as separate FBX clips | `Entities/<Name>/Animations/AH_Ent_<Name>_Anim_<Clip>.fbx` (30 fps, in place; each clip includes the skinned meshes and bind pose) |
 | One-line note of anything changed and why | "Changes from the brief" at the end of each entity below |
 
 Also included:
@@ -36,6 +36,7 @@ Sizes are taken from the bind pose. The width of the bipeds is their A-pose arm 
 - **Scale:** 1 Blender unit = 1 stud. The file is marked as metres with node scale 1, so **import at scale 1**: no 0.01 factor.
 - **Transforms:** the axis conversion is baked into the mesh and bone data. The rig node, both mesh nodes and the `Root` bone are identity in every file; the rig node shows about 0.000004° of float rounding. `Root` carries no rotation keys in any clip.
 - **Hierarchy:** every mesh is a child of the rig node, so the importer attaches it to the root.
+- **Clips:** every clip FBX carries the skinned meshes and their bind pose (all bones, `Root` and `HumanoidRootNode` included), so the importer can store motion relative to rest.
 - **Facing:** origin at the base centre between the feet, Y up.
 - **Rig:** `Root` at the feet → `HumanoidRootNode` at the hips → `Hips` → …
   - Neither `Root` nor `HumanoidRootNode` deforms.
@@ -59,7 +60,7 @@ Sizes are taken from the bind pose. The width of the bipeds is their A-pose arm 
 
 These checks run outside Roblox Studio:
 
-- `tools/inspect_fbx.py <file.fbx>` reads each file directly. It prints the unit scale, every node's parent and transform, and the `Root` / `HumanoidRootNode` rotation keys.
+- `tools/inspect_fbx.py <file.fbx>` reads each file directly. It prints the unit scale, every node's parent and transform, the bind poses, and the `Root` / `HumanoidRootNode` rotation keys.
 - `tools/verify_anim.py <Name>` re-imports every clip and compares each joint's world position with the source animation. All 40 clips match within 0.0003 studs.
 
 ### Export history
@@ -69,6 +70,8 @@ These checks run outside Roblox Studio:
 - Clips imported rotated (rig node −90°, `Root` keyed 90°).
 - Models imported 100× too large.
 - The body mesh got a Motor6D joined to itself.
+
+**Clip re-export, same day.** Clips had been exported as the armature alone, with no bind pose, and Roblox applied the rest pose twice. Each clip FBX now includes the skinned meshes, so it carries the bind pose.
 
 The meshes, UVs, textures and animation are unchanged. `tools/reexport.py` re-exports from the `.blend` sources.
 

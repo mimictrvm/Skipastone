@@ -81,6 +81,16 @@ def inspect(path):
             m['verts'] = len(v)
             m['extent'] = (v.min(0).round(3).tolist(), v.max(0).round(3).tolist())
         info['models'].append(m)
+    info['bindposes'] = []
+    for o in objs.elems:
+        if o.id == b'Pose':
+            nodes = [c for c in o.elems if c.id == b'PoseNode']
+            names = []
+            for pn in nodes:
+                nid = child(pn, b'Node').props[0]
+                if nid in models:
+                    names.append(models[nid]['name'])
+            info['bindposes'].append(names)
     info['anim'] = {}
     for cn, (tgt, prop) in cn_target.items():
         name = models[tgt]['name']
@@ -104,5 +114,11 @@ if __name__ == '__main__':
                 extra = f'  verts={m["verts"]} extent={m["extent"]}' if 'verts' in m else ''
                 print(f'  {m["kind"]:9s} {m["name"]:28s} parent={m["parent"]:24s} T={fmt(m["t"])} R={fmt(m["r"])} '
                       f'S={fmt(m["s"])}{extra}')
+        for names in i['bindposes']:
+            bones = [n for n in names if n not in [m['name'] for m in i['models'] if m['kind'] in ('Mesh', 'Null')]]
+            print(f'  BindPose: {len(names)} nodes ({len(bones)} bones; has Root={"Root" in names}, '
+                  f'HumanoidRootNode={"HumanoidRootNode" in names})')
+        if not i['bindposes']:
+            print('  BindPose: none')
         for name, ch in i['anim'].items():
             print(f'  anim {name} Lcl Rotation keys: ' + ', '.join(f'{k}[{a:.1f}..{b:.1f}]x{n}' for k, (a, b, n) in ch.items()))
