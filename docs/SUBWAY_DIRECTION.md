@@ -1,5 +1,7 @@
 # Map 1: Ebbmoor Junction (the Dybbuk)
 
+> **Amended (5 Oct 2026)** by [RELIQUARY_REDESIGN.md](RELIQUARY_REDESIGN.md) section 4.3: up to 6 players per run in a reserved server, no joining mid-run, and a results screen and return to the lobby at the end. Everything else here stands.
+
 **Status:** directive, v1 (4 Oct 2026). Whoever builds this map, person or AI, builds to this document. To change a rule, edit it here first; don't route around it.
 
 **What it is:** a standalone map with no link to Ashgrove House. One dark, disused subway junction. One Dybbuk. Trains that never stop. Five pieces of a code that isn't a code.

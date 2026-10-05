@@ -1,5 +1,7 @@
 # Ashgrove House: Creative Direction
 
+> **Parked (5 Oct 2026).** *The Reliquary* is now built around one monster, the Dybbuk. See [RELIQUARY_REDESIGN.md](RELIQUARY_REDESIGN.md). This document is kept on file in case Ashgrove House returns later as a map.
+
 **Status:** directive, v1 (4 Oct 2026). The team builds to this document. To change a rule, edit it here; don't route around it.
 
 **Built from:** *Horror Direction Analysis* (the comparative research) and *Ashgrove House: Art & Model Brief* (setting, premise, Story 1 beats, technical specs).

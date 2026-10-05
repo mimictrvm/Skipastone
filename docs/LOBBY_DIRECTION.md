@@ -1,5 +1,7 @@
 # The Reliquary: Lobby Direction
 
+> **Partly replaced (5 Oct 2026)** by [RELIQUARY_REDESIGN.md](RELIQUARY_REDESIGN.md): the layout and camera (section 2), the case contents (5.2) and the buttons (9) are replaced by its section 6. Everything about the room's look still applies.
+
 **Status:** directive, v1 (4 Oct 2026). Whoever builds or dresses the lobby, person or AI, builds to this document. To change a rule, edit it here first.
 
 **What it is:** the lobby of *The Reliquary*. It's Cornelius Ashgrove's private collection room, where every relic belongs to one of the game's maps. Players arrive here, party up, read the books and choose where to go.
