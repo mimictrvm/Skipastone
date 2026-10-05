@@ -83,8 +83,9 @@ def sheet(C, arm, meshes, clips, out_path, station, per=6):
     rows = []
     for cname, act in clips:
         n = int(act['frames'])
-        idx = ([1 + round(i * n / per) for i in range(per)] if act['loop'] else
-               [1 + round(i * (n - 1) / (per - 1)) for i in range(per)])
+        idx = getattr(C, 'SHEET_FRAMES', {}).get(cname) or \
+            ([1 + round(i * n / per) for i in range(per)] if act['loop'] else
+             [1 + round(i * (n - 1) / (per - 1)) for i in range(per)])
         ims = []
         for k, f in enumerate(idx):
             review._set_pose(arm, act, f)
@@ -94,6 +95,7 @@ def sheet(C, arm, meshes, clips, out_path, station, per=6):
             os.remove(p)
         rows.append((cname, act, idx, ims))
     lab = 210
+    per = max(len(r[3]) for r in rows)
     img = Image.new('RGB', (lab + per * (w + 6), len(rows) * (h + 6) + 60), (22, 22, 24))
     d = ImageDraw.Draw(img)
     title = 'station clips (platform set)' if station else 'new clips'
@@ -136,7 +138,7 @@ def main():
     with bk.RobloxSpace(arm, meshes):
         for cname, act in made:
             bk.export_fbx(os.path.join(od, 'Animations', f'{asset}_Anim_{cname}.fbx'), [arm] + meshes,
-                          action=act, anim=True)
+                          action=act, anim=True, unkeyed=getattr(C, 'UNKEYED_BONES', ()))
     arm.animation_data.action = None
     stats_p = os.path.join(od, 'Source', 'stats.json')
     stats = json.load(open(stats_p))

@@ -24,13 +24,13 @@
  },
  "clips": {
   "Idle": {
-   "frames": 120,
-   "seconds": 4.0,
+   "frames": 240,
+   "seconds": 8.0,
    "loop": true
   },
   "Walk": {
-   "frames": 48,
-   "seconds": 1.6,
+   "frames": 96,
+   "seconds": 3.2,
    "loop": true
   },
   "Run": {
@@ -102,6 +102,11 @@
    "frames": 66,
    "seconds": 2.2,
    "loop": false
+  },
+  "Chase": {
+   "frames": 44,
+   "seconds": 1.47,
+   "loop": true
   }
  }
 }

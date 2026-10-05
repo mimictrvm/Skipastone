@@ -144,7 +144,8 @@ def build(C):
                       for c, a in clips}
 
     # ---------------------------------------------------------- export
-    bk.export_roblox(od, asset, arm, meshes, clips)
+    bk.export_roblox(od, asset, arm, meshes, clips, unkeyed=getattr(C, 'UNKEYED_BONES', ()),
+                         embed=getattr(C, 'EMBED_TEXTURES', False))
 
     with open(os.path.join(od, 'Source', 'stats.json'), 'w') as f:
         json.dump(stats, f, indent=1)

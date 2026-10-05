@@ -708,6 +708,125 @@ def clips(an):
     out.append(('Vanish', 36, bk.track([(0, st), (0.3, k_arch(), 'snap'), (0.45, k_arch()), (1.0, k_drop(), 'in')]),
                 False))
     out += station_clips(an, st, k_recoil)
+    new = {c[0]: c for c in persona_clips(an)}
+    out = [new.pop(c[0], c) for c in out]  # the posed Idle and the glide Walk replace the originals
+    out += list(new.values())              # Chase
+    return out
+
+
+# --------------------------------------------------- persona: posed idle, glide walk, chase
+UNKEYED_BONES = ('Jaw',)  # the game drives the jaw live (talking); clips never key it
+EMBED_TEXTURES = True     # model FBX carries its textures (Path Mode: Copy, Embed Textures)
+
+# frames shown on review sheets for clips whose action is sparse
+SHEET_FRAMES = {'Idle': [1, 37, 46, 89, 131, 163, 207]}
+
+
+def win(t, a, b, c, d):
+    """0 before a, rises to 1 by b, holds, falls back to 0 by d."""
+    def ss(x):
+        x = min(max(x, 0.0), 1.0)
+        return x * x * (3 - 2 * x)
+    return ss((t - a) / max(b - a, 1e-6)) * (1 - ss((t - c) / max(d - c, 1e-6)))
+
+
+def fingers_side(side, curl, spread=0.0, thumb=None):
+    f = fingers(curl, spread, thumb)
+    if side == 'L':
+        return f
+    return {bk.mirror_name(k): bk.mirror_q(bk.Q(v)) for k, v in f.items()}
+
+
+def gesture(an, tilt=0.0, tw=0.0, spread=0.0, shrug=0.0, uncross=0.0):
+    """The standing pose: right claw raised by the head, left arm hanging out, legs crossed."""
+    p = {'@root': (0, 0.05, -0.12 - 0.06 * uncross)}
+    p['Hips'] = (0, 1.5, -4)
+    p['Spine'] = (2, 0, 2)
+    p['Chest'] = (3, -2 + 3 * shrug, 3)
+    p['Neck'] = (12, 0, -2)
+    p['Head'] = (-14, 4 + tilt, -3 + 3 * tw)
+    p['Clavicle_L'] = (0, 4 - 5 * shrug, 0)
+    p['Clavicle_R'] = bk.mirror_q(bk.Q((0, -10 - 6 * shrug, 0)))
+    mo.ik2(an, p, 'UpperArm_R', 'LowerArm_R', mo.Vector((-1.75, -0.45 - 0.05 * tw, 7.25 + 0.07 * tw)), (-1, 0.4, -0.7))
+    an.aim(p, 'Hand_R', (-0.12 + 0.2 * tw, -0.30, 1))
+    p.update(fingers_side('R', 38 - 34 * spread + 18 * tw, 10 + 20 * spread, 25 - 20 * spread))
+    an.aim(p, 'UpperArm_L', (0.48, -0.02, -1))
+    an.aim(p, 'LowerArm_L', (0.62, -0.18, -1))
+    an.aim(p, 'Hand_L', (0.45, -0.25, -1))
+    p.update(fingers_side('L', 22, 8))
+    u = uncross
+    legs(an, p, {'L': (-0.50 + 0.98 * u, -0.28 + 0.28 * u, 0.0), 'R': (0.56 - 1.04 * u, 0.32 - 0.28 * u, 0.0)})
+    return p
+
+
+def glide(an, t, steps, stride, lift, drop, out_arc, ease_kind, lean=0.0, arm=0.1, drift=None, twitch_at=None,
+          claws=(22, 6)):
+    """Stiff-legged gait: each step swings one straight leg out in an arc, then everything freezes
+    while the body slides (step -> pause -> slide). steps: [(relative duration, pause fraction)],
+    alternating left/right; uneven entries make the rhythm uneven. Hips level, head still."""
+    total = sum(d for d, _ in steps)
+    acc, i, u = 0.0, 0, 0.0
+    for i, (d, pause) in enumerate(steps):
+        if t * total < acc + d or i == len(steps) - 1:
+            u = (t * total - acc) / d
+            break
+        acc += d
+    pause = steps[i][1]
+    e = bk.ease(min(u / (1 - pause), 1.0), ease_kind)
+    swing = 'L' if i % 2 == 0 else 'R'
+    feet = {}
+    for side, sgn in SIDES:
+        x = 0.18 * sgn  # feet land almost on one line
+        if side == swing:
+            y = stride * (0.5 - e)
+            z = lift * math.sin(math.pi * e) ** 1.3
+            x += sgn * out_arc * math.sin(math.pi * e)
+        else:
+            y = stride * (e - 0.5)
+            z = 0.0
+        feet[side] = (x, 0.06 + y, z)
+    sw = 1 if swing == 'L' else -1
+    p = {'@root': (0.0, 0.0, drop)}
+    yaw = 3 * sw * math.sin(math.pi * e)
+    p['Hips'] = (lean * 0.3, 0, yaw)
+    p['Spine'] = (lean * 0.3 - 2 * math.sin(math.pi * e), 0, -yaw * 0.5)
+    p['Chest'] = (lean * 0.4, 0, -yaw * 0.5)
+    p['Neck'] = (10, 0, 0)
+    p['Head'] = (-10 - lean, 0, 0)  # torso yaw cancels out: the head never moves
+    dr = drift(t) if drift else 0.0
+    lag = arm * math.sin(2 * math.pi * (t - 0.06)) * (1 if steps else 0)
+    an.aim(p, 'UpperArm_L', (0.48, -0.02 - lag, -1))
+    an.aim(p, 'LowerArm_L', (0.60, -0.16 - lag * 1.4, -1))
+    an.aim(p, 'Hand_L', (0.45, -0.25 - lag, -1))
+    an.aim(p, 'UpperArm_R', (-0.18 - 0.6 * dr, -0.15 + lag, -1 + 0.3 * dr))
+    an.aim(p, 'LowerArm_R', (-0.10 - 0.8 * dr, -0.50 + lag, -1 + 0.2 * dr))
+    tw = mo.twitch(t, twitch_at, 0.03) if twitch_at is not None else 0.0
+    an.aim(p, 'Hand_R', (-0.05 - 0.5 * dr + 0.4 * tw, -0.6, -1))
+    flex = 4 * math.sin(2 * math.pi * 2 * t)
+    p.update(fingers_side('L', claws[0] + flex, claws[1]))
+    p.update(fingers_side('R', claws[0] + 6 - flex + 30 * tw, claws[1] + 4))
+    legs(an, p, feet)
+    return p
+
+
+def persona_clips(an):
+    out = []
+
+    def idle(t):
+        tw = mo.twitch(t, 0.15, 0.012) + 0.5 * mo.twitch(t, 0.19, 0.01)
+        return gesture(an, tilt=8 * win(t, 0.33, 0.37, 0.42, 0.47), tw=tw, spread=win(t, 0.52, 0.55, 0.58, 0.62),
+                       shrug=win(t, 0.66, 0.69, 0.72, 0.75), uncross=0.35 * win(t, 0.82, 0.86, 0.90, 0.95))
+    out.append(('Idle', 240, idle, True))
+
+    walk_steps = [(1.0, 0.40), (0.8, 0.30), (1.15, 0.55), (0.95, 0.40)]  # smooth, faster, long pause, normal
+    out.append(('Walk', 96, lambda t: glide(an, t, walk_steps, stride=3.2, lift=0.25, drop=-0.35, out_arc=0.8,
+                                            ease_kind='smooth', arm=0.08,
+                                            drift=lambda t: win(t, 0.50, 0.62, 0.78, 0.92), twitch_at=0.86), True))
+
+    chase_steps = [(1.0, 0.14), (0.88, 0.10), (1.06, 0.18), (0.94, 0.10)]
+    out.append(('Chase', 44, lambda t: glide(an, t, chase_steps, stride=4.4, lift=0.55, drop=-0.45, out_arc=0.5,
+                                             ease_kind='snap', lean=4, arm=0.03, twitch_at=0.4,
+                                             claws=(-8, 14)), True))
     return out
 
 

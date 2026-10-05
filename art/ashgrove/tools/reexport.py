@@ -44,7 +44,9 @@ def main():
                 bk.log(f'  {cname}: fixed {len(stale)} curve paths')
             clips.append((cname, act))
         bk.log(f'{asset}: {len(meshes)} meshes, {len(clips)} clips')
-        bk.export_roblox(od, asset, arm, meshes, clips)
+        C = __import__(f'build_{name.lower()}')
+        bk.export_roblox(od, asset, arm, meshes, clips, unkeyed=getattr(C, 'UNKEYED_BONES', ()),
+                         embed=getattr(C, 'EMBED_TEXTURES', False))
         bpy.ops.wm.save_as_mainfile(filepath=blend, compress=True)
 
 

@@ -24,7 +24,7 @@ Also included:
 
 | Entity | Size W×H×D (studs) | Triangles (≤ 12,000) | Bones (≤ ~50) | Max influences | Clips |
 |---|---|---|---|---|---|
-| Dybbuk | 8.9 × 9.2 × 1.1 (A-pose) | 11,580 | 36 | 4 | 16 |
+| Dybbuk | 8.9 × 9.2 × 1.1 (A-pose) | 11,580 | 36 | 4 | 17 |
 | Dullahan | 6.2 × 7.7 × 2.3 | 11,880 (body 9,700 + head 2,100 + eyes 80) | 46 | 4 | 8 |
 | Demon | 8.0 × 10.1 × 1.8 (to horn tips) | 11,354 | 38 | 4 | 8 |
 | Siren | 5.6 × 7.1 × 6.2 (long tail; floats 0.5 up) | 11,060 | 38 | 4 | 8 |
@@ -87,15 +87,28 @@ The meshes, UVs, textures and animation are unchanged. `tools/reexport.py` re-ex
 
 | Clip | Frames | Notes |
 |---|---|---|
-| Idle | 120 loop | Breathing; two sharp head twitches; fingers flex |
-| Walk | 48 loop | Stiff stilt gait |
-| Run | 24 loop | Bent double, arms reaching (hunt) |
+| Idle | 240 loop | **His standing pose:** right claw raised by the head, head forward, left arm hanging out, legs crossed. Long stillness broken by five small events: a raised-hand twitch (frame 37), a head tilt (frame 89), fingers spreading (frame 131), a shoulder shift (frame 163), and the legs half-uncrossing (frame 207) |
+| Walk | 96 loop | **Glide:** stiff, straight-legged steps that swing out in an arc, then freeze while the body slides (step → pause → slide). Four uneven steps per loop: smooth, faster, a long pause, normal. Hips level, torso upright, head dead still. The right arm drifts out to balance mid-loop, and the hand twitches |
+| Chase | 44 loop | The same gait, longer and faster with short pauses. Claws open, and the upper body stays composed |
+| Run | 24 loop | The original bent-double hunt run. Chase replaces it as the main pursuit clip |
 | Attack | 45 | Hands close on frame 24 |
 | ThrowCorpse | 75 | Grips on frame 25, **releases on frame 55**. Attach the corpse to `Hand_R` / `Hand_L` |
 | Stunned | 75 | Music box: recoil, clutch head, freeze. Then loop… |
 | StunnedLoop | 30 loop | …for as long as the stun lasts |
 | Manifest | 60 | Unfolds from a heap on the floor |
 | Vanish | 36 | Arches, collapses down through the floor line |
+
+**Walk speed.** Both locomotion clips are in place. Match playback speed to movement speed with `AnimationTrack:AdjustSpeed(speed / natural)`. That stretches or squeezes the pauses, not the posture. The natural speeds below are in rig studs per second, with your ×1.4 scale in brackets:
+
+- Walk: 2.0 studs/s (2.8)
+- Chase: 6.0 studs/s (8.4)
+
+Blend from Walk to Chase as it closes in.
+
+Previews (animated GIFs) are in `Review/Preview/`:
+- `AH_Ent_Dybbuk_Walk_Side.gif` and `_Chase_Side.gif` show the rhythm best.
+- `AH_Ent_Dybbuk_Idle.gif` is the Idle loop.
+- `AH_Ent_Dybbuk_Idle_Flashlight.png` is the Idle pose under a flashlight.
 
 **Added clips (Pack 1.1).** Seven more clips on the same rig. The model and the nine clips above are unchanged.
 
