@@ -275,7 +275,8 @@ def hand_prims():
     return P
 
 
-def teeth_prims():
+def teeth_prims(gap=0.0):
+    """gap > 0 stops the tips at the grin line, leaving the two rows apart (talking jaw)."""
     P = []
     rng = np.random.default_rng(7)
     n = 25
@@ -287,8 +288,12 @@ def teeth_prims():
             size = 1.0 - 0.45 * edge
             jit = rng.normal(0, 1, 3)
             base = mouth_arc(th, 0.04) + v3(0, 0, 0.088 * row)
-            tip = mouth_arc(th + jit[0] * 1.2, 0.006 + 0.012 * edge) + \
-                v3(0, 0, (0.004 + 0.012 * abs(jit[1])) * -row)
+            if gap > 0:
+                tip = mouth_arc(th + jit[0] * 1.2, 0.006 + 0.012 * edge) + \
+                    v3(0, 0, (gap / 2 + 0.013 * size + 0.010 * abs(jit[1])) * row)  # clear of the rounded tip
+            else:
+                tip = mouth_arc(th + jit[0] * 1.2, 0.006 + 0.012 * edge) + \
+                    v3(0, 0, (0.004 + 0.012 * abs(jit[1])) * -row)
             rad = (math.sin(math.radians(th)), -math.cos(math.radians(th)), 0)
             P.append(Prim('cone', bone, k=0.003, region='teeth', a=base, b=tip, up=rad,
                           r1=0.029 * size * (1 + 0.15 * jit[2]), r2=0.010 * size, squash=(1.0, 0.62)))

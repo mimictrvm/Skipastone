@@ -119,6 +119,31 @@ The meshes, UVs, textures and animation are unchanged. `tools/reexport.py` re-ex
 
 **Changes from the brief.** Bipeds were modelled in A-pose for clean skinning (the reference sheet shows that pose). The spike legs make footsteps a "tap"; the brief had no foot spec, so I chose the scarier option.
 
+### Talking jaw (Fable brief)
+
+Your talk script rotates `Jaw` live.
+
+![Dybbuk jaw closed, 8° and 25°](Entities/Dybbuk/Review/Jaw/AH_Ent_Dybbuk_Jaw.png)
+
+| Value | Answer |
+|---|---|
+| Jaw hinge axis | **X**, in the `Jaw` bone's local space |
+| Opening direction | **Negative** (−). In Roblox: `Jaw.Transform = CFrame.Angles(math.rad(-angle), 0, 0)` |
+| Max safe angle | **25°**. Past that the chin starts sinking into the neck (0.016 studs at 25°, 0.07 at 30°) |
+| Bone names | `Root` → `HumanoidRootNode` → `Hips` → `Spine` → `Chest` → `Neck` → `Head` → `Jaw`, plus arms, fingers and legs (36 bones) |
+| Eyes | Separate objects **`EyeL`** and **`EyeR`**, both using a material named **`Eyes`**, rigid to `Head` |
+
+What changed for the jaw:
+
+- **Hinge:** the `Jaw` pivot now sits behind and just above the grin corners, at (0, 0.02, 8.44) rig studs, pointing forward to the chin.
+- **Weights:** the mask below the grin line is 100% `Jaw` and above it 100% `Head`. The grin corners blend into the cheeks over about 20°.
+- **Teeth:** the upper row is 100% `Head` and the lower row 100% `Jaw`. The rows used to touch at the tips, which stretched into strands when the mouth opened, so they were rebuilt with a small gap. Each row is now its own watertight piece, and the teeth keep their texture. The closed grin now shows a thin dark line between the rows.
+- **Mouth interior:** the carved pocket behind the teeth is the mouth bag. Its floor follows `Jaw` and its roof `Head`, so opening shows a dark throat, never a hole.
+- **Mesh rules:** watertight (no open or non-manifold edges), triangles only (no n-gons), 11,500 triangles, at most 4 influences, nothing weighted to `Root`.
+- **Clips:** none of the 16 Dybbuk clips keys `Jaw`. Moments that used to open the mouth (Roar, Attack, screams) now need the script to drive the jaw.
+- **Export:** the model FBX now embeds its four textures (Path Mode: Copy, Embed Textures). Bake Animation is off for the model, on for clips, and everything else is unchanged.
+- **Scripts:** `tools/dybbuk_jaw.py rig | range | final <max>` rebuilds all of this and re-renders the screenshots. The range test is in `Review/Jaw/AH_Ent_Dybbuk_JawRange.png`.
+
 ## Dullahan — `AH_Ent_Dullahan`
 
 ![Dullahan reference sheet](Entities/Dullahan/Review/AH_Ent_Dullahan_RefSheet.png)

@@ -765,6 +765,14 @@ def _patch_fbx_exporter():
     src = src.replace(old, 'and (KEEP_ARMATURE_CHILDREN or (par_obj, ob_obj) not in arm_parents):')
     efb.KEEP_ARMATURE_CHILDREN = True
     exec(compile(src, efb.__file__, 'exec'), efb.__dict__)
+    # Bones listed in UNKEYED_BONES get no animation curves at all (e.g. a jaw a game script drives live).
+    src = inspect.getsource(efb.fbx_animations_do)
+    old = '        if ob_obj.parented_to_armature:\n            continue\n        ACNW = AnimationCurveNodeWrapper'
+    assert old in src, 'FBX exporter changed: update _patch_fbx_exporter (animations)'
+    src = src.replace(old, '        if ob_obj.parented_to_armature or (ob_obj.is_bone and ob_obj.bdata.name in UNKEYED_BONES):\n'
+                           '            continue\n        ACNW = AnimationCurveNodeWrapper')
+    efb.UNKEYED_BONES = set()
+    exec(compile(src, efb.__file__, 'exec'), efb.__dict__)
     _FBX_PATCHED = True
 
 
@@ -803,11 +811,13 @@ class RobloxSpace:
         return False
 
 
-def export_fbx(path, objs, action=None, anim=False):
+def export_fbx(path, objs, action=None, anim=False, embed=False, unkeyed=()):
     """Roblox export contract: Forward -Z, Up Y, Apply Unit, FBX Units Scale
     (1 Blender unit = 1 stud, no x100), no leaf bones, armature as a Null.
     Call inside `RobloxSpace` so the armature node is identity."""
     _patch_fbx_exporter()
+    from io_scene_fbx import export_fbx_bin as efb
+    efb.UNKEYED_BONES = set(unkeyed)
     activate(objs[0])
     for o in objs:
         o.select_set(True)
@@ -835,20 +845,21 @@ def export_fbx(path, objs, action=None, anim=False):
         armature_nodetype='NULL', use_armature_deform_only=False,
         bake_anim=anim, bake_anim_use_all_actions=False, bake_anim_use_nla_strips=False,
         bake_anim_force_startend_keying=True, bake_anim_simplify_factor=0.0,
-        path_mode='STRIP', embed_textures=False)
+        path_mode='COPY' if embed else 'STRIP', embed_textures=embed)
+    efb.UNKEYED_BONES = set()
     s.unit_settings.system = 'NONE'
     log(f'  wrote {os.path.relpath(path, ROOT)}')
 
 
-def export_roblox(asset_dir, asset, arm, meshes, clips):
+def export_roblox(asset_dir, asset, arm, meshes, clips, embed=False, unkeyed=()):
     """Model + one FBX per clip, all in Roblox space."""
     with RobloxSpace(arm, meshes):
-        export_fbx(os.path.join(asset_dir, f'{asset}.fbx'), [arm] + meshes, action=None)
+        export_fbx(os.path.join(asset_dir, f'{asset}.fbx'), [arm] + meshes, action=None, embed=embed)
         for cname, act in clips:
             # The skinned meshes ride along so each clip carries the bind pose: importers
             # (Roblox included) can then store motion relative to rest, not full local rotations.
             export_fbx(os.path.join(asset_dir, 'Animations', f'{asset}_Anim_{cname}.fbx'), [arm] + meshes,
-                       action=act, anim=True)
+                       action=act, anim=True, unkeyed=unkeyed)
     arm.animation_data.action = None
 
 
